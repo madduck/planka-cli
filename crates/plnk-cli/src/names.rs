@@ -86,6 +86,10 @@ pub struct NameIndex {
     groups: Option<Vec<GroupEntry>>,
     /// The base-group subset of [`groups`](Self::groups).
     base_groups: Option<Vec<GroupEntry>>,
+    /// The ordinary (board/card) group subset of [`groups`](Self::groups).
+    ordinary_groups: Option<Vec<GroupEntry>>,
+    /// Whether every group's fields have been loaded into the cache.
+    fields_loaded: bool,
 }
 
 impl NameIndex {
@@ -135,6 +139,7 @@ impl NameIndex {
             "labelId" => Some(NameKind::Label),
             "customFieldGroupId" => Some(NameKind::CustomFieldGroup),
             "baseCustomFieldGroupId" => Some(NameKind::BaseCustomFieldGroup),
+            "customFieldId" => Some(NameKind::CustomField),
             _ => None,
         }
     }
@@ -223,8 +228,12 @@ impl NameIndex {
                 let base = client.get_base_field_group(id).await?;
                 Ok(Some(base.name))
             }
-            // Implemented by the custom-field commit.
-            NameKind::CustomField => Ok(None),
+            NameKind::CustomField => {
+                // There is no field-by-id endpoint; fields belong to a group.
+                // Enumerate every group's fields, then read from the cache.
+                self.ensure_fields(client).await?;
+                Ok(self.lookup(NameKind::CustomField, id).map(str::to_string))
+            }
         }
     }
 
@@ -477,7 +486,7 @@ impl NameIndex {
             .map(|board| board.id.clone())
             .collect();
 
-        let mut entries = base_entries.clone();
+        let mut ordinary_entries = Vec::new();
         for board_id in board_ids {
             for group in client.list_field_groups_for_board(&board_id).await? {
                 let display = group.name.clone().or_else(|| {
@@ -488,7 +497,7 @@ impl NameIndex {
                 });
                 if let Some(name) = display {
                     self.remember(NameKind::CustomFieldGroup, &group.id, &name);
-                    entries.push(GroupEntry {
+                    ordinary_entries.push(GroupEntry {
                         id: group.id.clone(),
                         name,
                     });
@@ -496,8 +505,37 @@ impl NameIndex {
             }
         }
 
+        let mut entries = base_entries.clone();
+        entries.extend(ordinary_entries.iter().cloned());
         self.base_groups = Some(base_entries);
+        self.ordinary_groups = Some(ordinary_entries);
         self.groups = Some(entries);
+        Ok(())
+    }
+
+    /// Load and cache every custom field across every group.
+    async fn ensure_fields<C>(&mut self, client: &C) -> Result<(), PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if self.fields_loaded {
+            return Ok(());
+        }
+        self.ensure_groups(client).await?;
+        let base_groups = self.base_groups.clone().unwrap_or_default();
+        let ordinary_groups = self.ordinary_groups.clone().unwrap_or_default();
+
+        for group in &base_groups {
+            for field in client.list_fields(&group.id, true).await? {
+                self.remember(NameKind::CustomField, &field.id, &field.name);
+            }
+        }
+        for group in &ordinary_groups {
+            for field in client.list_fields(&group.id, false).await? {
+                self.remember(NameKind::CustomField, &field.id, &field.name);
+            }
+        }
+        self.fields_loaded = true;
         Ok(())
     }
 

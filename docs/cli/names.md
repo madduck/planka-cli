@@ -81,3 +81,10 @@ against the projects list; ordinary groups against every board snapshot. An
 adopted group takes its display name from its base group. JSON gains
 `customFieldGroupName` and `baseCustomFieldGroupName`; table/markdown show
 them.
+
+## Custom fields
+
+`--field` on `card field` already accepts a name and keeps doing so. Custom
+field references in JSON gain `customFieldName`, and table/markdown show it.
+Fields are only reachable through their group, so the resolver enumerates
+groups to build the field cache.

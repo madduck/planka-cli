@@ -523,6 +523,87 @@ async fn group_name_resolves_and_falls_back_to_base() {
     assert_eq!(json["data"]["projectName"], "Platform");
 }
 
+// ─── Custom field: JSON decoration ───────────────────────────────────────
+
+#[tokio::test]
+async fn field_reference_is_decorated() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/cards/1000"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "item": {"id":"1000","listId":"100","boardId":"10","name":"Task",
+                     "position":65536,"isClosed":false,
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
+            "included": {"customFieldValues": [
+                {"id":"v1","cardId":"1000","customFieldGroupId":"g1","customFieldId":"f1",
+                 "content":"high","createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ]}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/custom-field-groups/g1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "item": {"id":"g1","name":"Priority","boardId":"10","position":65536,
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
+            "included": {"customFields": [
+                {"id":"f1","name":"Priority Level","position":65536,
+                 "showOnFrontOfCard":false,"customFieldGroupId":"g1",
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ]}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": [
+                {"id":"1","name":"Platform","createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ],
+            "included": {"baseCustomFieldGroups": [], "customFields": []}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/projects/1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
+                serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+                ]),
+            )),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/boards/10"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
+            "included": {"customFieldGroups": [
+                {"id":"g1","name":"Priority","boardId":"10","position":65536,
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ]}
+        })))
+        .mount(&server)
+        .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "--names", "card", "field", "list", "1000", "--output", "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["data"][0]["customFieldId"], "f1");
+    assert_eq!(json["data"][0]["customFieldName"], "Priority Level");
+}
+
 #[tokio::test]
 async fn group_references_are_decorated() {
     let server = MockServer::start().await;
