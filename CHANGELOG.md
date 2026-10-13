@@ -22,6 +22,10 @@ and this project adheres to
     gains `userName` (the username) and table/markdown show it.
   - labels: `--label` and the positional card-label argument accept a name; JSON
     gains `labelName` and table/markdown show it.
+  - custom field groups: `--group`, `--base`, `--base-group`, and the
+    `field-group` positional accept a name; JSON gains
+    `customFieldGroupName`/`baseCustomFieldGroupName` and table/markdown show
+    them.
 
 ## [0.3.0] - 2026-08-10
 
