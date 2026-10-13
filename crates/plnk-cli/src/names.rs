@@ -24,7 +24,7 @@ use plnk_core::api::{
     match_by_name,
 };
 use plnk_core::error::PlankaError;
-use plnk_core::models::{Board, List, Project, User};
+use plnk_core::models::{Board, Label, List, Project, User};
 
 /// The kind of resource a foreign-key field points at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -79,6 +79,8 @@ pub struct NameIndex {
     lists: Option<Vec<List>>,
     /// Enumeration cache for user name search.
     users: Option<Vec<User>>,
+    /// Enumeration cache for label name search.
+    labels: Option<Vec<Label>>,
 }
 
 impl NameIndex {
@@ -125,6 +127,7 @@ impl NameIndex {
             "boardId" => Some(NameKind::Board),
             "listId" => Some(NameKind::List),
             "userId" => Some(NameKind::User),
+            "labelId" => Some(NameKind::Label),
             _ => None,
         }
     }
@@ -190,6 +193,12 @@ impl NameIndex {
             NameKind::User => {
                 let user = client.get_user(id).await?;
                 Ok(Some(user.username.unwrap_or(user.name)))
+            }
+            NameKind::Label => {
+                // There is no label-by-id endpoint; labels are only reachable
+                // through their board. Enumerate, then read from the cache.
+                self.ensure_labels(client).await?;
+                Ok(self.lookup(NameKind::Label, id).map(str::to_string))
             }
             _ => Ok(None),
         }
@@ -381,6 +390,65 @@ impl NameIndex {
         }
         self.users = Some(users);
         Ok(())
+    }
+
+    /// Load and cache every label across every board. Unnamed labels are not
+    /// remembered: there is no name to show for them.
+    async fn ensure_labels<C>(&mut self, client: &C) -> Result<(), PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if self.labels.is_some() {
+            return Ok(());
+        }
+        self.ensure_boards(client).await?;
+        let board_ids: Vec<String> = self
+            .boards
+            .as_ref()
+            .expect("boards loaded")
+            .iter()
+            .map(|board| board.id.clone())
+            .collect();
+
+        let mut labels = Vec::new();
+        for board_id in board_ids {
+            for label in client.list_labels(&board_id).await? {
+                if let Some(name) = &label.name {
+                    self.remember(NameKind::Label, &label.id, name);
+                }
+                labels.push(label);
+            }
+        }
+        self.labels = Some(labels);
+        Ok(())
+    }
+
+    /// Resolve a label name (or ID) to an ID, optionally scoped to a board.
+    pub async fn resolve_label<C>(
+        &mut self,
+        client: &C,
+        query: &str,
+        board: Option<&str>,
+    ) -> Result<String, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if !self.enabled {
+            return Ok(query.to_string());
+        }
+        self.ensure_labels(client).await?;
+        let labels = self.labels.as_ref().expect("labels loaded");
+        let candidates: Vec<Label> = match board {
+            Some(board_id) => labels
+                .iter()
+                .filter(|label| label.board_id == board_id)
+                .cloned()
+                .collect(),
+            None => labels.clone(),
+        };
+        resolve_resource(&candidates, "--label", "label", query, |label| {
+            label.id.clone()
+        })
     }
 
     /// Resolve a username (or user ID) to an ID.

@@ -18,10 +18,12 @@ pub async fn execute(
             render_collection_named(client, &labels, format, full, names).await?;
         }
         crate::app::CardLabelAction::Add { card, label } => {
+            let label = names.resolve_label(client, &label, None).await?;
             let card_label = client.add_card_label(&card, &label).await?;
             render_item_named(client, &card_label, format, full, names).await?;
         }
         crate::app::CardLabelAction::Remove { card, label } => {
+            let label = names.resolve_label(client, &label, None).await?;
             client.remove_card_label(&card, &label).await?;
             render_message("Card label removed.", format)?;
         }
