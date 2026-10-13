@@ -14,17 +14,17 @@
 //! sibling name field. Each resource adds its mapping arm and its resolver; the
 //! decoration loop itself is shared.
 
-#![allow(clippy::unused_async, clippy::unused_async_trait_impl)] // removed once the first resolver arm lands
-
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 use serde_json::{Map, Value};
 
 use plnk_core::api::{
-    BoardApi, CustomFieldApi, CustomFieldGroupApi, LabelApi, ListApi, ProjectApi, UserApi,
+    BoardApi, CustomFieldApi, CustomFieldGroupApi, LabelApi, ListApi, Named, ProjectApi, UserApi,
+    match_by_name,
 };
 use plnk_core::error::PlankaError;
+use plnk_core::models::Project;
 
 /// The kind of resource a foreign-key field points at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -71,6 +71,8 @@ pub struct NameIndex {
     board_project: HashMap<String, String>,
     /// List ID → board ID, learned while resolving lists.
     list_board: HashMap<String, String>,
+    /// Enumeration cache for project name search.
+    projects: Option<Vec<Project>>,
 }
 
 impl NameIndex {
@@ -111,8 +113,11 @@ impl NameIndex {
     /// Map a foreign-key JSON field to the resource it points at.
     ///
     /// Each resource commit adds its own arm here.
-    fn kind_for_field(_field: &str) -> Option<NameKind> {
-        None
+    fn kind_for_field(field: &str) -> Option<NameKind> {
+        match field {
+            "projectId" => Some(NameKind::Project),
+            _ => None,
+        }
     }
 
     /// Substitute a foreign-key value for display in table/markdown output.
@@ -149,14 +154,71 @@ impl NameIndex {
     /// Resolve a single ID to a name. Each resource commit adds its arm.
     async fn resolve_kind<C>(
         &mut self,
-        _client: &C,
-        _kind: NameKind,
-        _id: &str,
+        client: &C,
+        kind: NameKind,
+        id: &str,
     ) -> Result<Option<String>, PlankaError>
     where
         C: NameSource + ?Sized,
     {
-        Ok(None)
+        match kind {
+            NameKind::Project => {
+                let project = client.get_project(id).await?;
+                Ok(Some(project.name))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Load and cache every project, remembering each ID→name pair so a later
+    /// decoration does not re-fetch what the search already saw.
+    async fn ensure_projects<C>(&mut self, client: &C) -> Result<(), PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if self.projects.is_some() {
+            return Ok(());
+        }
+        let projects = client.list_projects().await?;
+        for project in &projects {
+            self.remember(NameKind::Project, &project.id, &project.name);
+        }
+        self.projects = Some(projects);
+        Ok(())
+    }
+
+    /// Resolve a project name (or ID) to an ID.
+    pub async fn resolve_project<C>(
+        &mut self,
+        client: &C,
+        query: &str,
+    ) -> Result<String, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if !self.enabled {
+            return Ok(query.to_string());
+        }
+        self.ensure_projects(client).await?;
+        let projects = self.projects.as_ref().expect("projects loaded");
+        resolve_resource(projects, "--project", "project", query, |project| {
+            project.id.clone()
+        })
+    }
+
+    /// Resolve an optional `--project` value.
+    pub async fn resolve_optional_project<C>(
+        &mut self,
+        client: &C,
+        project: Option<String>,
+    ) -> Result<Option<String>, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        match project {
+            Some(project) => Ok(Some(self.resolve_project(client, &project).await?)),
+            None => Ok(None),
+        }
     }
 
     /// Resolve every foreign key reachable in a JSON value.
@@ -280,6 +342,47 @@ impl NameIndex {
             return self.board_project.get(board_id).cloned();
         }
         None
+    }
+}
+
+/// Resolve an ID-or-name argument against a candidate set.
+///
+/// ID-first, then the house three-tier name match. Multiple matches are an
+/// error that lists the candidates.
+fn resolve_resource<T: Named>(
+    items: &[T],
+    flag: &str,
+    label: &str,
+    query: &str,
+    id_of: impl Fn(&T) -> String,
+) -> Result<String, PlankaError> {
+    if let Some(found) = items.iter().find(|item| id_of(item) == query) {
+        return Ok(id_of(found));
+    }
+
+    let matched = match_by_name(items, query);
+    match matched.len() {
+        0 => Err(PlankaError::NotFoundMessage {
+            message: format!(
+                "No {label} matching '{query}' was found. Use '{label} list' to \
+                 inspect available {label}s or pass an ID."
+            ),
+        }),
+        1 => Ok(id_of(matched[0])),
+        _ => {
+            let candidates = matched
+                .iter()
+                .map(|item| format!("{} ({})", item.name(), id_of(item)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(PlankaError::InvalidOptionValue {
+                field: flag.to_string(),
+                message: format!(
+                    "{label} '{query}' matched multiple entries. Be more specific or \
+                     pass an ID. Matches: {candidates}"
+                ),
+            })
+        }
     }
 }
 
