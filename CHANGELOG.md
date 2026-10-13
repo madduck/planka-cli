@@ -26,6 +26,8 @@ and this project adheres to
     `field-group` positional accept a name; JSON gains
     `customFieldGroupName`/`baseCustomFieldGroupName` and table/markdown show
     them.
+  - custom fields: JSON gains `customFieldName` and table/markdown show it;
+    `--field` continues to accept a name.
 
 ## [0.3.0] - 2026-08-10
 
