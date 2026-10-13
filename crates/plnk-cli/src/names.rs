@@ -24,7 +24,7 @@ use plnk_core::api::{
     match_by_name,
 };
 use plnk_core::error::PlankaError;
-use plnk_core::models::{Board, Project};
+use plnk_core::models::{Board, List, Project};
 
 /// The kind of resource a foreign-key field points at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -75,6 +75,8 @@ pub struct NameIndex {
     projects: Option<Vec<Project>>,
     /// Enumeration cache for board name search.
     boards: Option<Vec<Board>>,
+    /// Enumeration cache for list name search.
+    lists: Option<Vec<List>>,
 }
 
 impl NameIndex {
@@ -119,6 +121,7 @@ impl NameIndex {
         match field {
             "projectId" => Some(NameKind::Project),
             "boardId" => Some(NameKind::Board),
+            "listId" => Some(NameKind::List),
             _ => None,
         }
     }
@@ -174,6 +177,12 @@ impl NameIndex {
                 self.board_project
                     .insert(board.id.clone(), board.project_id.clone());
                 Ok(Some(board.name))
+            }
+            NameKind::List => {
+                let list = client.get_list(id).await?;
+                self.list_board
+                    .insert(list.id.clone(), list.board_id.clone());
+                Ok(Some(list.name))
             }
             _ => Ok(None),
         }
@@ -274,6 +283,100 @@ impl NameIndex {
         resolve_resource(&candidates, "--board", "board", query, |board| {
             board.id.clone()
         })
+    }
+
+    /// Load and cache every list across every board.
+    async fn ensure_lists<C>(&mut self, client: &C) -> Result<(), PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if self.lists.is_some() {
+            return Ok(());
+        }
+        self.ensure_boards(client).await?;
+        let board_ids: Vec<String> = self
+            .boards
+            .as_ref()
+            .expect("boards loaded")
+            .iter()
+            .map(|board| board.id.clone())
+            .collect();
+
+        let mut lists = Vec::new();
+        for board_id in board_ids {
+            for list in client.list_lists(&board_id).await? {
+                self.remember(NameKind::List, &list.id, &list.name);
+                self.list_board
+                    .insert(list.id.clone(), list.board_id.clone());
+                lists.push(list);
+            }
+        }
+        self.lists = Some(lists);
+        Ok(())
+    }
+
+    /// Resolve a list name (or ID) to an ID.
+    ///
+    /// The search is scoped to a board when one is given, then to the boards of
+    /// a project, otherwise it spans every board.
+    pub async fn resolve_list<C>(
+        &mut self,
+        client: &C,
+        query: &str,
+        board: Option<&str>,
+        project: Option<&str>,
+    ) -> Result<String, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if !self.enabled {
+            return Ok(query.to_string());
+        }
+        self.ensure_lists(client).await?;
+        let lists = self.lists.as_ref().expect("lists loaded");
+        let candidates: Vec<List> = if let Some(board_id) = board {
+            lists
+                .iter()
+                .filter(|list| list.board_id == board_id)
+                .cloned()
+                .collect()
+        } else if let Some(project_id) = project {
+            let board_ids: HashSet<&str> = self
+                .boards
+                .as_ref()
+                .expect("boards loaded")
+                .iter()
+                .filter(|board| board.project_id == project_id)
+                .map(|board| board.id.as_str())
+                .collect();
+            lists
+                .iter()
+                .filter(|list| board_ids.contains(list.board_id.as_str()))
+                .cloned()
+                .collect()
+        } else {
+            lists.clone()
+        };
+        resolve_resource(&candidates, "--list", "list", query, |list| list.id.clone())
+    }
+
+    /// Resolve an optional `--list` / `--to-list` value.
+    pub async fn resolve_optional_list<C>(
+        &mut self,
+        client: &C,
+        list: Option<String>,
+        board: Option<&str>,
+        project: Option<&str>,
+    ) -> Result<Option<String>, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        match list {
+            Some(list) => Ok(Some(
+                self.resolve_list(client, &list, board, project).await?,
+            )),
+            None => Ok(None),
+        }
     }
 
     /// Resolve an optional `--board` / `--to-board` value.

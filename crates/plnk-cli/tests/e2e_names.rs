@@ -224,6 +224,125 @@ async fn board_name_resolves_and_decorates_json() {
     assert_eq!(json["data"][0]["projectName"], "Platform");
 }
 
+// ─── List: input resolution, JSON decoration, text substitution ──────────
+
+fn card_list_body() -> serde_json::Value {
+    serde_json::json!({
+        "items": [
+            {"id":"1000","listId":"100","boardId":"10","name":"Task",
+             "position":65536,"isClosed":false,
+             "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+        ]
+    })
+}
+
+async fn mount_list_discovery(server: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(project_list_body()))
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/projects/1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
+                serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+                ]),
+            )),
+        )
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/boards/10"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(board_snapshot_body()))
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/lists/100/cards"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(card_list_body()))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn list_name_resolves_and_decorates_json() {
+    let server = MockServer::start().await;
+    mount_list_discovery(&server).await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "--names", "card", "list", "--list", "Todo", "--output", "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["data"][0]["listId"], "100");
+    assert_eq!(json["data"][0]["listName"], "Todo");
+    assert_eq!(json["data"][0]["projectName"], "Platform");
+}
+
+#[tokio::test]
+async fn list_name_is_substituted_in_table() {
+    let server = MockServer::start().await;
+    mount_list_discovery(&server).await;
+
+    plnk_with_server(&server.uri())
+        .args(["--names", "card", "list", "--list", "Todo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Todo"));
+}
+
+#[tokio::test]
+async fn ambiguous_list_name_lists_candidates() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(project_list_body()))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/projects/1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
+                serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+                ]),
+            )),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/boards/10"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
+            "included": {"lists": [
+                {"id":"100","boardId":"10","name":"Todo One","position":65536,
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
+                {"id":"101","boardId":"10","name":"Todo Two","position":131072,
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ]}
+        })))
+        .mount(&server)
+        .await;
+
+    plnk_with_server(&server.uri())
+        .args(["--names", "card", "list", "--list", "Todo"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("Todo One (100)"))
+        .stderr(predicate::str::contains("Todo Two (101)"));
+}
+
 #[tokio::test]
 async fn ambiguous_board_name_lists_candidates() {
     let server = MockServer::start().await;

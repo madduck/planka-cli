@@ -16,6 +16,8 @@ and this project adheres to
     table/markdown show it.
   - boards: `--board` and `--to-board` accept a name; JSON gains `boardName` and
     table/markdown show it.
+  - lists: `--list` and `--to-list` accept a name; JSON gains `listName` and
+    table/markdown show it.
 
 ## [0.3.0] - 2026-08-10
 
