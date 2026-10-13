@@ -1,4 +1,4 @@
-use plnk_core::api::{CustomFieldGroupApi, match_by_name};
+use plnk_core::api::match_by_name;
 use plnk_core::error::PlankaError;
 use plnk_core::models::UpdateCustomFieldGroup;
 
@@ -102,6 +102,10 @@ async fn create(
                     .to_string(),
             });
         }
+        let base = match base {
+            Some(base) => Some(names.resolve_base_group(client, &base).await?),
+            None => None,
+        };
         let group = client
             .create_card_field_group(&card_id, base.as_deref(), name.as_deref())
             .await?;
@@ -118,10 +122,11 @@ async fn get(
     full: bool,
     names: &mut NameIndex,
 ) -> Result<(), PlankaError> {
-    match client.get_field_group(id).await {
+    let id = names.resolve_group(client, id).await?;
+    match client.get_field_group(&id).await {
         Ok(group) => render_item_named(client, &group, format, full, names).await,
         Err(error) if is_not_found(&error) => {
-            let base = client.get_base_field_group(id).await.map_err(|_| error)?;
+            let base = client.get_base_field_group(&id).await.map_err(|_| error)?;
             render_item_named(client, &base, format, full, names).await
         }
         Err(error) => Err(error),
@@ -142,12 +147,13 @@ async fn update(
             message: "At least one field must be provided for update".to_string(),
         });
     }
+    let id = names.resolve_group(client, id).await?;
     let params = UpdateCustomFieldGroup { name };
-    match client.update_field_group(id, params.clone()).await {
+    match client.update_field_group(&id, params.clone()).await {
         Ok(group) => render_item_named(client, &group, format, full, names).await,
         Err(error) if is_not_found(&error) => {
             let base = client
-                .update_base_field_group(id, params)
+                .update_base_field_group(&id, params)
                 .await
                 .map_err(|_| error)?;
             render_item_named(client, &base, format, full, names).await
@@ -157,20 +163,22 @@ async fn update(
 }
 
 async fn delete(
-    client: &impl CustomFieldGroupApi,
+    client: &impl NameSource,
     id: &str,
     format: OutputFormat,
     yes: bool,
+    names: &mut NameIndex,
 ) -> Result<(), PlankaError> {
-    if !yes && !confirm_delete("field group", id) {
+    let id = names.resolve_group(client, id).await?;
+    if !yes && !confirm_delete("field group", &id) {
         return render_message("Aborted.", format);
     }
-    match client.delete_field_group(id).await {
+    match client.delete_field_group(&id).await {
         Ok(()) => {}
         Err(error) if is_not_found(&error) => {
             // The ordinary route made no change, so retrying the base route is safe.
             client
-                .delete_base_field_group(id)
+                .delete_base_field_group(&id)
                 .await
                 .map_err(|_| error)?;
         }
@@ -243,6 +251,6 @@ pub async fn execute(
             create(client, scope, name, base, format, full, names).await
         }
         Action::Update { id, name } => update(client, &id, name, format, full, names).await,
-        Action::Delete { id } => delete(client, &id, format, yes).await,
+        Action::Delete { id } => delete(client, &id, format, yes, names).await,
     }
 }

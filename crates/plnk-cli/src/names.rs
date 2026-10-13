@@ -81,6 +81,11 @@ pub struct NameIndex {
     users: Option<Vec<User>>,
     /// Enumeration cache for label name search.
     labels: Option<Vec<Label>>,
+    /// Every custom field group, ordinary and base, with resolved display
+    /// names (adopted groups take their name from the base group).
+    groups: Option<Vec<GroupEntry>>,
+    /// The base-group subset of [`groups`](Self::groups).
+    base_groups: Option<Vec<GroupEntry>>,
 }
 
 impl NameIndex {
@@ -128,6 +133,8 @@ impl NameIndex {
             "listId" => Some(NameKind::List),
             "userId" => Some(NameKind::User),
             "labelId" => Some(NameKind::Label),
+            "customFieldGroupId" => Some(NameKind::CustomFieldGroup),
+            "baseCustomFieldGroupId" => Some(NameKind::BaseCustomFieldGroup),
             _ => None,
         }
     }
@@ -200,7 +207,24 @@ impl NameIndex {
                 self.ensure_labels(client).await?;
                 Ok(self.lookup(NameKind::Label, id).map(str::to_string))
             }
-            _ => Ok(None),
+            NameKind::CustomFieldGroup => {
+                let group = client.get_field_group(id).await?;
+                if let Some(name) = group.name {
+                    return Ok(Some(name));
+                }
+                // An adopted group's name lives on the base group.
+                if let Some(base_id) = group.base_custom_field_group_id {
+                    let base = client.get_base_field_group(&base_id).await?;
+                    return Ok(Some(base.name));
+                }
+                Ok(None)
+            }
+            NameKind::BaseCustomFieldGroup => {
+                let base = client.get_base_field_group(id).await?;
+                Ok(Some(base.name))
+            }
+            // Implemented by the custom-field commit.
+            NameKind::CustomField => Ok(None),
         }
     }
 
@@ -423,6 +447,98 @@ impl NameIndex {
         Ok(())
     }
 
+    /// Load and cache every custom field group, ordinary and base.
+    async fn ensure_groups<C>(&mut self, client: &C) -> Result<(), PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if self.groups.is_some() {
+            return Ok(());
+        }
+
+        let base_groups = client.list_all_base_field_groups().await?;
+        let mut base_names: HashMap<String, String> = HashMap::new();
+        let mut base_entries = Vec::new();
+        for base in &base_groups {
+            self.remember(NameKind::BaseCustomFieldGroup, &base.id, &base.name);
+            base_names.insert(base.id.clone(), base.name.clone());
+            base_entries.push(GroupEntry {
+                id: base.id.clone(),
+                name: base.name.clone(),
+            });
+        }
+
+        self.ensure_boards(client).await?;
+        let board_ids: Vec<String> = self
+            .boards
+            .as_ref()
+            .expect("boards loaded")
+            .iter()
+            .map(|board| board.id.clone())
+            .collect();
+
+        let mut entries = base_entries.clone();
+        for board_id in board_ids {
+            for group in client.list_field_groups_for_board(&board_id).await? {
+                let display = group.name.clone().or_else(|| {
+                    group
+                        .base_custom_field_group_id
+                        .as_ref()
+                        .and_then(|base_id| base_names.get(base_id).cloned())
+                });
+                if let Some(name) = display {
+                    self.remember(NameKind::CustomFieldGroup, &group.id, &name);
+                    entries.push(GroupEntry {
+                        id: group.id.clone(),
+                        name,
+                    });
+                }
+            }
+        }
+
+        self.base_groups = Some(base_entries);
+        self.groups = Some(entries);
+        Ok(())
+    }
+
+    /// Resolve a custom field group name (or ID) to an ID.
+    pub async fn resolve_group<C>(&mut self, client: &C, query: &str) -> Result<String, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if !self.enabled {
+            return Ok(query.to_string());
+        }
+        self.ensure_groups(client).await?;
+        let groups = self.groups.as_ref().expect("groups loaded");
+        resolve_resource(groups, "--group", "custom field group", query, |group| {
+            group.id.clone()
+        })
+    }
+
+    /// Resolve a base custom field group name (or ID) to an ID.
+    pub async fn resolve_base_group<C>(
+        &mut self,
+        client: &C,
+        query: &str,
+    ) -> Result<String, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if !self.enabled {
+            return Ok(query.to_string());
+        }
+        self.ensure_groups(client).await?;
+        let groups = self.base_groups.as_ref().expect("base groups loaded");
+        resolve_resource(
+            groups,
+            "--base",
+            "base custom field group",
+            query,
+            |group| group.id.clone(),
+        )
+    }
+
     /// Resolve a label name (or ID) to an ID, optionally scoped to a board.
     pub async fn resolve_label<C>(
         &mut self,
@@ -638,6 +754,19 @@ impl NameIndex {
             return self.board_project.get(board_id).cloned();
         }
         None
+    }
+}
+
+/// A custom field group paired with the display name it presents.
+#[derive(Clone)]
+struct GroupEntry {
+    id: String,
+    name: String,
+}
+
+impl Named for GroupEntry {
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 
