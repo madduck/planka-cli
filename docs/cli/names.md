@@ -41,5 +41,9 @@ adds a sibling `*Name` field next to each foreign key, for example:
 { "id": "1", "projectId": "42", "projectName": "Platform" }
 ```
 
-The mode is extended resource by resource. See the sections below as each
-resource lands.
+The mode is extended resource by resource.
+
+## Projects
+
+`--project` accepts a project name wherever it is expected. JSON output adds
+`projectName` next to `projectId`, and table/markdown output shows the name.

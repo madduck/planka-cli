@@ -16,6 +16,7 @@ pub async fn execute(
 ) -> Result<(), PlankaError> {
     match action {
         crate::app::BoardAction::List { project } => {
+            let project = names.resolve_project(client, &project).await?;
             let boards = client.list_boards(&project).await?;
             render_collection_named(client, &boards, format, full, names).await?;
         }
@@ -28,10 +29,12 @@ pub async fn execute(
             render_snapshot(&snapshot, format)?;
         }
         crate::app::BoardAction::Find { project, name } => {
+            let project = names.resolve_project(client, &project).await?;
             let boards = client.find_boards(&project, &name).await?;
             render_collection_named(client, &boards, format, full, names).await?;
         }
         crate::app::BoardAction::Create { project, name } => {
+            let project = names.resolve_project(client, &project).await?;
             let params = CreateBoard {
                 project_id: project.clone(),
                 name,

@@ -11,8 +11,9 @@ and this project adheres to
 ### Added
 
 - Global `--names` / `--no-names` flags and a `names = true` config key. When
-  enabled, `plnk` resolves names to IDs and shows names in output. The mode is
-  rolled out resource by resource.
+  enabled, `plnk` resolves names to IDs and shows names in output:
+  - projects: `--project` accepts a name; JSON gains `projectName` and
+    table/markdown show it.
 
 ## [0.3.0] - 2026-08-10
 

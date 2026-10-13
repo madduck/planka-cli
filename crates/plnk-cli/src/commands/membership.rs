@@ -14,6 +14,7 @@ pub async fn execute(
 ) -> Result<(), PlankaError> {
     match action {
         crate::app::MembershipAction::List { project, board } => {
+            let project = names.resolve_optional_project(client, project).await?;
             if let Some(board_id) = board {
                 let members = client.list_board_members(&board_id).await?;
                 render_collection_named(client, &members, format, full, names).await?;
@@ -32,6 +33,7 @@ pub async fn execute(
             user,
             role,
         } => {
+            let project = names.resolve_optional_project(client, project).await?;
             if let Some(board_id) = board {
                 let member = client
                     .add_board_member(&board_id, &user, role.as_deref())
@@ -51,6 +53,7 @@ pub async fn execute(
             board,
             user,
         } => {
+            let project = names.resolve_optional_project(client, project).await?;
             if let Some(board_id) = board {
                 // Find the membership ID by listing and matching user
                 let members = client.list_board_members(&board_id).await?;
