@@ -73,7 +73,7 @@ fn project_snapshot_body() -> serde_json::Value {
         "item": {"id":"1","name":"Platform","createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
         "included": {
             "boards": [
-                {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                {"id":"10","projectId":"1","name":"Sprint","position":65_536,
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
             ]
         }
@@ -162,7 +162,7 @@ async fn ambiguous_project_name_lists_candidates() {
 
 // ─── Board: input resolution, JSON decoration, text substitution ─────────
 
-fn project_snapshot_with_boards(boards: serde_json::Value) -> serde_json::Value {
+fn project_snapshot_with_boards(boards: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "item": {"id":"1","name":"Platform","createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
         "included": { "boards": boards }
@@ -171,11 +171,11 @@ fn project_snapshot_with_boards(boards: serde_json::Value) -> serde_json::Value 
 
 fn board_snapshot_body() -> serde_json::Value {
     serde_json::json!({
-        "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+        "item": {"id":"10","name":"Sprint","position":65_536,"projectId":"1",
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
         "included": {
             "lists": [
-                {"id":"100","boardId":"10","name":"Todo","position":65536,
+                {"id":"100","boardId":"10","name":"Todo","position":65_536,
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
             ]
         }
@@ -194,8 +194,8 @@ async fn board_name_resolves_and_decorates_json() {
         .and(path("/api/projects/1"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
-                serde_json::json!([
-                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                &serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65_536,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
                 ]),
             )),
@@ -230,7 +230,7 @@ fn card_list_body() -> serde_json::Value {
     serde_json::json!({
         "items": [
             {"id":"1000","listId":"100","boardId":"10","name":"Task",
-             "position":65536,"isClosed":false,
+             "position":65_536,"isClosed":false,
              "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
         ]
     })
@@ -246,8 +246,8 @@ async fn mount_list_discovery(server: &MockServer) {
         .and(path("/api/projects/1"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
-                serde_json::json!([
-                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                &serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65_536,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
                 ]),
             )),
@@ -382,11 +382,11 @@ async fn comment_user_is_decorated_with_username() {
 
 fn board_snapshot_with_labels() -> serde_json::Value {
     serde_json::json!({
-        "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+        "item": {"id":"10","name":"Sprint","position":65_536,"projectId":"1",
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
         "included": {
             "labels": [
-                {"id":"50","boardId":"10","name":"urgent","color":"berry-red","position":65536,
+                {"id":"50","boardId":"10","name":"urgent","color":"berry-red","position":65_536,
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
             ]
         }
@@ -405,8 +405,8 @@ async fn label_name_resolves_and_decorates_json() {
         .and(path("/api/projects/1"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
-                serde_json::json!([
-                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                &serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65_536,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
                 ]),
             )),
@@ -461,7 +461,7 @@ fn projects_with_base_group() -> serde_json::Value {
 
 fn empty_board_snapshot() -> serde_json::Value {
     serde_json::json!({
-        "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+        "item": {"id":"10","name":"Sprint","position":65_536,"projectId":"1",
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
         "included": {}
     })
@@ -477,8 +477,8 @@ async fn mount_group_discovery(server: &MockServer) {
         .and(path("/api/projects/1"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
-                serde_json::json!([
-                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                &serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65_536,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
                 ]),
             )),
@@ -532,7 +532,7 @@ async fn field_reference_is_decorated() {
         .and(path("/api/cards/1000"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "item": {"id":"1000","listId":"100","boardId":"10","name":"Task",
-                     "position":65536,"isClosed":false,
+                     "position":65_536,"isClosed":false,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
             "included": {"customFieldValues": [
                 {"id":"v1","cardId":"1000","customFieldGroupId":"g1","customFieldId":"f1",
@@ -544,10 +544,10 @@ async fn field_reference_is_decorated() {
     Mock::given(method("GET"))
         .and(path("/api/custom-field-groups/g1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "item": {"id":"g1","name":"Priority","boardId":"10","position":65536,
+            "item": {"id":"g1","name":"Priority","boardId":"10","position":65_536,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
             "included": {"customFields": [
-                {"id":"f1","name":"Priority Level","position":65536,
+                {"id":"f1","name":"Priority Level","position":65_536,
                  "showOnFrontOfCard":false,"customFieldGroupId":"g1",
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
             ]}
@@ -568,8 +568,8 @@ async fn field_reference_is_decorated() {
         .and(path("/api/projects/1"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
-                serde_json::json!([
-                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                &serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65_536,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
                 ]),
             )),
@@ -579,10 +579,10 @@ async fn field_reference_is_decorated() {
     Mock::given(method("GET"))
         .and(path("/api/boards/10"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+            "item": {"id":"10","name":"Sprint","position":65_536,"projectId":"1",
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
             "included": {"customFieldGroups": [
-                {"id":"g1","name":"Priority","boardId":"10","position":65536,
+                {"id":"g1","name":"Priority","boardId":"10","position":65_536,
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
             ]}
         })))
@@ -611,11 +611,11 @@ async fn group_references_are_decorated() {
     Mock::given(method("GET"))
         .and(path("/api/boards/10"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+            "item": {"id":"10","name":"Sprint","position":65_536,"projectId":"1",
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
             "included": {"customFieldGroups": [
                 {"id":"g1","name":null,"boardId":"10","baseCustomFieldGroupId":"bg1",
-                 "position":65536,"createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+                 "position":65_536,"createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
             ]}
         })))
         .mount(&server)
@@ -654,8 +654,8 @@ async fn ambiguous_list_name_lists_candidates() {
         .and(path("/api/projects/1"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
-                serde_json::json!([
-                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                &serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65_536,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
                 ]),
             )),
@@ -665,12 +665,12 @@ async fn ambiguous_list_name_lists_candidates() {
     Mock::given(method("GET"))
         .and(path("/api/boards/10"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+            "item": {"id":"10","name":"Sprint","position":65_536,"projectId":"1",
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
             "included": {"lists": [
-                {"id":"100","boardId":"10","name":"Todo One","position":65536,
+                {"id":"100","boardId":"10","name":"Todo One","position":65_536,
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
-                {"id":"101","boardId":"10","name":"Todo Two","position":131072,
+                {"id":"101","boardId":"10","name":"Todo Two","position":131_072,
                  "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
             ]}
         })))
@@ -698,10 +698,10 @@ async fn ambiguous_board_name_lists_candidates() {
         .and(path("/api/projects/1"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
-                serde_json::json!([
-                    {"id":"10","projectId":"1","name":"Sprint One","position":65536,
+                &serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint One","position":65_536,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
-                    {"id":"11","projectId":"1","name":"Sprint Two","position":131072,
+                    {"id":"11","projectId":"1","name":"Sprint Two","position":131_072,
                      "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
                 ]),
             )),

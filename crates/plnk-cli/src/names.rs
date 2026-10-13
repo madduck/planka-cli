@@ -899,11 +899,17 @@ mod tests {
     }
 
     #[test]
-    fn enabled_index_decoration_is_mapping_driven() {
-        // With no mapping registered, even an in-memory name is not inserted.
-        // Resource commits add mappings and cover the positive cases.
+    fn enabled_index_inserts_mapped_name_fields() {
         let mut index = NameIndex::new(true);
         index.remember(NameKind::Project, "p1", "Platform");
+        let mut value = serde_json::json!({ "projectId": "p1" });
+        index.decorate_json(&mut value);
+        assert_eq!(value["projectName"], "Platform");
+    }
+
+    #[test]
+    fn enabled_index_omits_names_it_does_not_know() {
+        let index = NameIndex::new(true);
         let mut value = serde_json::json!({ "projectId": "p1" });
         index.decorate_json(&mut value);
         assert!(value.get("projectName").is_none());
