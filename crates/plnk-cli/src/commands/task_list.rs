@@ -5,27 +5,29 @@ use plnk_core::models::{CreateTaskList, UpdateTaskList};
 use crate::app::OutputFormat;
 use crate::commands::card::parse_position;
 use crate::commands::project::confirm_delete;
-use crate::output::{render_collection, render_item, render_message};
+use crate::names::{NameIndex, NameSource};
+use crate::output::{render_collection_named, render_item_named, render_message};
 
 pub async fn execute(
-    client: &impl TaskListApi,
+    client: &(impl TaskListApi + NameSource),
     action: crate::app::TaskListAction,
     format: OutputFormat,
     yes: bool,
     full: bool,
+    names: &mut NameIndex,
 ) -> Result<(), PlankaError> {
     match action {
         crate::app::TaskListAction::List { card } => {
             let lists = client.list_task_lists(&card).await?;
-            render_collection(&lists, format, full)?;
+            render_collection_named(client, &lists, format, full, names).await?;
         }
         crate::app::TaskListAction::Find { card, name } => {
             let lists = client.find_task_lists(&card, &name).await?;
-            render_collection(&lists, format, full)?;
+            render_collection_named(client, &lists, format, full, names).await?;
         }
         crate::app::TaskListAction::Get { id } => {
             let list = client.get_task_list(&id).await?;
-            render_item(&list, format, full)?;
+            render_item_named(client, &list, format, full, names).await?;
         }
         crate::app::TaskListAction::Create {
             card,
@@ -51,7 +53,7 @@ pub async fn execute(
                 hide_completed_tasks: hide_completed,
             };
             let list = client.create_task_list(&card, params).await?;
-            render_item(&list, format, full)?;
+            render_item_named(client, &list, format, full, names).await?;
         }
         crate::app::TaskListAction::Update {
             id,
@@ -78,7 +80,7 @@ pub async fn execute(
                 ..UpdateTaskList::default()
             };
             let list = client.update_task_list(&id, params).await?;
-            render_item(&list, format, full)?;
+            render_item_named(client, &list, format, full, names).await?;
         }
         crate::app::TaskListAction::Move { id, to_position } => {
             let params = UpdateTaskList {
@@ -86,7 +88,7 @@ pub async fn execute(
                 ..UpdateTaskList::default()
             };
             let list = client.update_task_list(&id, params).await?;
-            render_item(&list, format, full)?;
+            render_item_named(client, &list, format, full, names).await?;
         }
         crate::app::TaskListAction::Delete { id } => {
             // Deleting a task list deletes every task in it, so the prompt

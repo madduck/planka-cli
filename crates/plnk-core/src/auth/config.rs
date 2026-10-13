@@ -38,6 +38,16 @@ pub struct ConfigFile {
     pub auth_scheme: AuthScheme,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http: Option<HttpConfig>,
+    /// Resolve names to IDs and show names instead of IDs. The global
+    /// `--names` / `--no-names` flags override this per invocation.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub names: bool,
+}
+
+/// `serde` predicate: omit `names` from the written config when it is `false`.
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde requires the `&bool` signature
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // serde's skip_serializing_if passes &T
@@ -273,6 +283,7 @@ mod tests {
             server: "http://localhost:3000".to_string(),
             token: "test-token-123".to_string(),
             auth_scheme: AuthScheme::ApiKey,
+            names: true,
             http: Some(HttpConfig {
                 max_in_flight: Some(8),
                 rate_limit: Some(10),
@@ -287,7 +298,18 @@ mod tests {
         let parsed: ConfigFile = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.server, config.server);
         assert_eq!(parsed.token, config.token);
+        assert!(parsed.names);
         assert_eq!(parsed.http, config.http);
+    }
+
+    #[test]
+    fn names_defaults_to_false_and_is_omitted_when_written() {
+        let parsed: ConfigFile =
+            toml::from_str("server = \"http://localhost:3000\"\ntoken = \"t\"\n").unwrap();
+        assert!(!parsed.names);
+
+        let written = toml::to_string_pretty(&parsed).unwrap();
+        assert!(!written.contains("names"));
     }
 
     #[test]

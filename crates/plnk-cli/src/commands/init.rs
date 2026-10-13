@@ -60,6 +60,8 @@ pub fn execute(
         token,
         auth_scheme,
         http,
+        // Preserve the display preference across a reconfigure.
+        names: existing.as_ref().is_some_and(|c| c.names),
     };
 
     write_config(&new_config)?;
@@ -304,6 +306,7 @@ mod tests {
             token: token.to_string(),
             auth_scheme,
             http: None,
+            names: false,
         }
     }
 
