@@ -40,6 +40,7 @@ pub async fn execute(
             let board = names
                 .resolve_optional_board(client, board, project.as_deref())
                 .await?;
+            let user = names.resolve_user(client, &user).await?;
             if let Some(board_id) = board {
                 let member = client
                     .add_board_member(&board_id, &user, role.as_deref())
@@ -63,6 +64,7 @@ pub async fn execute(
             let board = names
                 .resolve_optional_board(client, board, project.as_deref())
                 .await?;
+            let user = names.resolve_user(client, &user).await?;
             if let Some(board_id) = board {
                 // Find the membership ID by listing and matching user
                 let members = client.list_board_members(&board_id).await?;
