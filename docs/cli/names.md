@@ -47,3 +47,9 @@ The mode is extended resource by resource.
 
 `--project` accepts a project name wherever it is expected. JSON output adds
 `projectName` next to `projectId`, and table/markdown output shows the name.
+
+## Boards
+
+`--board` and `--to-board` accept a board name. Board search is scoped to the
+resolved `--project` when one is given, otherwise it searches every project.
+JSON gains `boardName`; table/markdown show it.

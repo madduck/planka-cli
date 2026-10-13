@@ -17,6 +17,7 @@ pub async fn execute(
 ) -> Result<(), PlankaError> {
     match action {
         crate::app::ListAction::List { board } => {
+            let board = names.resolve_board(client, &board, None).await?;
             let lists = client.list_lists(&board).await?;
             render_collection_named(client, &lists, format, full, names).await?;
         }
@@ -25,6 +26,7 @@ pub async fn execute(
             render_item_named(client, &list, format, full, names).await?;
         }
         crate::app::ListAction::Find { board, name } => {
+            let board = names.resolve_board(client, &board, None).await?;
             let lists = client.find_lists(&board, &name).await?;
             render_collection_named(client, &lists, format, full, names).await?;
         }
@@ -35,6 +37,7 @@ pub async fn execute(
             list_type,
             color,
         } => {
+            let board = names.resolve_board(client, &board, None).await?;
             let params = CreateList {
                 board_id: board.clone(),
                 name,
