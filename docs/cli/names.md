@@ -53,3 +53,9 @@ The mode is extended resource by resource.
 `--board` and `--to-board` accept a board name. Board search is scoped to the
 resolved `--project` when one is given, otherwise it searches every project.
 JSON gains `boardName`; table/markdown show it.
+
+## Lists
+
+`--list` and `--to-list` accept a list name. List search is scoped to the
+resolved `--board`, then to the boards of a resolved `--project`, otherwise it
+searches every board. JSON gains `listName`; table/markdown show it.

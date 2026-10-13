@@ -172,6 +172,9 @@ pub async fn execute(
     match action {
         crate::app::CardAction::List { list, board, label } => {
             let board = names.resolve_optional_board(client, board, None).await?;
+            let list = names
+                .resolve_optional_list(client, list, board.as_deref(), None)
+                .await?;
             let cards = if let Some((board_id, list_id, label_ids)) =
                 resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
             {
@@ -264,6 +267,9 @@ pub async fn execute(
             let board = names
                 .resolve_optional_board(client, board, project.as_deref())
                 .await?;
+            let list = names
+                .resolve_optional_list(client, list, board.as_deref(), project.as_deref())
+                .await?;
 
             let cards = if let Some((board_id, list_id, label_ids)) =
                 resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
@@ -303,6 +309,7 @@ pub async fn execute(
             description,
             position,
         } => {
+            let list = names.resolve_list(client, &list, None, None).await?;
             let desc = match description {
                 Some(raw) => Some(resolve_text(&raw)?),
                 None => None,
@@ -352,6 +359,9 @@ pub async fn execute(
             position,
         } => {
             let to_board = names.resolve_optional_board(client, to_board, None).await?;
+            let to_list = names
+                .resolve_list(client, &to_list, None, to_board.as_deref())
+                .await?;
             let pos = match position {
                 Some(p) => parse_position(&p)?,
                 None => 65536.0,
