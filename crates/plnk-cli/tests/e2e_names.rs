@@ -442,6 +442,125 @@ async fn label_name_resolves_and_decorates_json() {
     assert_eq!(json["data"]["labelName"], "urgent");
 }
 
+// ─── Custom field group: input resolution and JSON decoration ────────────
+
+fn projects_with_base_group() -> serde_json::Value {
+    serde_json::json!({
+        "items": [
+            {"id":"1","name":"Platform","createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+        ],
+        "included": {
+            "baseCustomFieldGroups": [
+                {"id":"bg1","projectId":"1","name":"Template",
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ],
+            "customFields": []
+        }
+    })
+}
+
+fn empty_board_snapshot() -> serde_json::Value {
+    serde_json::json!({
+        "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
+        "included": {}
+    })
+}
+
+async fn mount_group_discovery(server: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(projects_with_base_group()))
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/projects/1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
+                serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+                ]),
+            )),
+        )
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn group_name_resolves_and_falls_back_to_base() {
+    let server = MockServer::start().await;
+    mount_group_discovery(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/boards/10"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty_board_snapshot()))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/custom-field-groups/bg1"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "--names",
+            "field-group",
+            "get",
+            "Template",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["data"]["id"], "bg1");
+    assert_eq!(json["data"]["name"], "Template");
+    assert_eq!(json["data"]["projectName"], "Platform");
+}
+
+#[tokio::test]
+async fn group_references_are_decorated() {
+    let server = MockServer::start().await;
+    mount_group_discovery(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/boards/10"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
+            "included": {"customFieldGroups": [
+                {"id":"g1","name":null,"boardId":"10","baseCustomFieldGroupId":"bg1",
+                 "position":65536,"createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ]}
+        })))
+        .mount(&server)
+        .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "--names",
+            "field-group",
+            "list",
+            "--board",
+            "Sprint",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["data"][0]["baseCustomFieldGroupId"], "bg1");
+    assert_eq!(json["data"][0]["baseCustomFieldGroupName"], "Template");
+}
+
 #[tokio::test]
 async fn ambiguous_list_name_lists_candidates() {
     let server = MockServer::start().await;

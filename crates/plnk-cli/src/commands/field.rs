@@ -12,10 +12,20 @@ use crate::output::{render_collection_named, render_item_named, render_message};
 /// The kind cannot be inferred from the ID: base groups and ordinary groups are
 /// separate wire resources reached by different routes, and a base group's
 /// fields are readable only through the projects list.
-fn scope(group: Option<String>, base_group: Option<String>) -> Result<(String, bool), PlankaError> {
+async fn scope<C>(
+    client: &C,
+    names: &mut NameIndex,
+    group: Option<String>,
+    base_group: Option<String>,
+) -> Result<(String, bool), PlankaError>
+where
+    C: NameSource + ?Sized,
+{
     match (group, base_group) {
-        (Some(id), None) => Ok((id, false)),
-        (None, Some(id)) => Ok((id, true)),
+        (Some(group), None) => Ok((names.resolve_group(client, &group).await?, false)),
+        (None, Some(base_group)) => {
+            Ok((names.resolve_base_group(client, &base_group).await?, true))
+        }
         _ => Err(PlankaError::MissingRequiredOption {
             field: "--group or --base-group".to_string(),
         }),
@@ -34,7 +44,7 @@ pub async fn execute(
 
     match action {
         Action::List { group, base_group } => {
-            let (id, base) = scope(group, base_group)?;
+            let (id, base) = scope(client, names, group, base_group).await?;
             let fields = client.list_fields(&id, base).await?;
             render_collection_named(client, &fields, format, full, names).await?;
         }
@@ -43,7 +53,7 @@ pub async fn execute(
             base_group,
             name,
         } => {
-            let (id, base) = scope(group, base_group)?;
+            let (id, base) = scope(client, names, group, base_group).await?;
             let fields = client.find_fields(&id, base, &name).await?;
             render_collection_named(client, &fields, format, full, names).await?;
         }
@@ -53,7 +63,7 @@ pub async fn execute(
             name,
             show_on_front,
         } => {
-            let (id, base) = scope(group, base_group)?;
+            let (id, base) = scope(client, names, group, base_group).await?;
             let field = client.create_field(&id, base, &name, show_on_front).await?;
             render_item_named(client, &field, format, full, names).await?;
         }

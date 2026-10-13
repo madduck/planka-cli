@@ -72,3 +72,12 @@ username); table/markdown show it.
 label name. Labels are scoped to a board when one is known, otherwise the
 search spans every board. JSON gains `labelName`; table/markdown show it.
 Unnamed labels have no name to show and keep their ID.
+
+## Custom field groups
+
+`--group`, `--base`, and `--base-group` accept a group name, as do the
+positional IDs on `field-group get|update|delete`. Base groups are matched
+against the projects list; ordinary groups against every board snapshot. An
+adopted group takes its display name from its base group. JSON gains
+`customFieldGroupName` and `baseCustomFieldGroupName`; table/markdown show
+them.
