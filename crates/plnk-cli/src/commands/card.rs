@@ -1,4 +1,4 @@
-use plnk_core::api::{CardApi, LabelApi, ListApi, match_by_name};
+use plnk_core::api::{CardApi, match_by_name};
 use plnk_core::error::PlankaError;
 use plnk_core::models::{CreateCard, ErrorFailure, FindScope, Label, MoveCard, UpdateCard};
 use serde::Serialize;
@@ -6,8 +6,10 @@ use serde::Serialize;
 use crate::app::OutputFormat;
 use crate::commands::project::confirm_delete;
 use crate::input::resolve_text;
+use crate::names::{NameIndex, NameSource};
 use crate::output::{
-    render_collection, render_collection_with_meta, render_item, render_message, render_snapshot,
+    render_collection_named, render_collection_with_meta_named, render_item_named, render_message,
+    render_snapshot,
 };
 
 #[derive(Debug, Serialize)]
@@ -72,7 +74,7 @@ fn resolve_label_id(labels: &[Label], query: &str) -> Result<String, PlankaError
 }
 
 async fn resolve_label_scope(
-    client: &(impl LabelApi + ListApi),
+    client: &impl NameSource,
     list: Option<&str>,
     board: Option<&str>,
     labels: &[String],
@@ -160,11 +162,12 @@ fn fatal_batch_error(requested_count: usize, failures: Vec<ErrorFailure>) -> Pla
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(
-    client: &(impl CardApi + LabelApi + ListApi),
+    client: &(impl CardApi + NameSource),
     action: crate::app::CardAction,
     format: OutputFormat,
     yes: bool,
     full: bool,
+    names: &mut NameIndex,
 ) -> Result<(), PlankaError> {
     match action {
         crate::app::CardAction::List { list, board, label } => {
@@ -183,11 +186,11 @@ pub async fn execute(
                     field: "--list or --board".to_string(),
                 });
             };
-            render_collection(&cards, format, full)?;
+            render_collection_named(client, &cards, format, full, names).await?;
         }
         crate::app::CardAction::Get { id } => {
             let card = client.get_card(&id).await?;
-            render_item(&card, format, full)?;
+            render_item_named(client, &card, format, full, names).await?;
         }
         crate::app::CardAction::GetMany {
             id,
@@ -236,7 +239,8 @@ pub async fn execute(
                 batch.concurrency,
                 allow_missing,
             );
-            render_collection_with_meta(&batch.cards, format, full, &meta)?;
+            render_collection_with_meta_named(client, &batch.cards, format, full, &meta, names)
+                .await?;
         }
         crate::app::CardAction::Snapshot { id } => {
             let snapshot = client.get_card_snapshot(&id).await?;
@@ -285,7 +289,7 @@ pub async fn execute(
                     .find_cards(scope, title.as_deref().unwrap_or(""))
                     .await?
             };
-            render_collection(&cards, format, full)?;
+            render_collection_named(client, &cards, format, full, names).await?;
         }
         crate::app::CardAction::Create {
             list,
@@ -309,7 +313,7 @@ pub async fn execute(
                 position: pos,
             };
             let card = client.create_card(&list, params).await?;
-            render_item(&card, format, full)?;
+            render_item_named(client, &card, format, full, names).await?;
         }
         crate::app::CardAction::Update {
             id,
@@ -333,7 +337,7 @@ pub async fn execute(
                 is_closed: None,
             };
             let card = client.update_card(&id, params).await?;
-            render_item(&card, format, full)?;
+            render_item_named(client, &card, format, full, names).await?;
         }
         crate::app::CardAction::Move {
             id,
@@ -351,15 +355,15 @@ pub async fn execute(
                 position: pos,
             };
             let card = client.move_card(&id, params).await?;
-            render_item(&card, format, full)?;
+            render_item_named(client, &card, format, full, names).await?;
         }
         crate::app::CardAction::Archive { id } => {
             let card = client.archive_card(&id).await?;
-            render_item(&card, format, full)?;
+            render_item_named(client, &card, format, full, names).await?;
         }
         crate::app::CardAction::Unarchive { id } => {
             let card = client.unarchive_card(&id).await?;
-            render_item(&card, format, full)?;
+            render_item_named(client, &card, format, full, names).await?;
         }
         crate::app::CardAction::Delete { id } => {
             if !yes && !confirm_delete("card", &id) {
