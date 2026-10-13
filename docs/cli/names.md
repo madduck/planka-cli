@@ -65,3 +65,10 @@ searches every board. JSON gains `listName`; table/markdown show it.
 `--user` and the positional user argument on `card assignee` accept a username.
 Users are matched on their unique `username`. JSON gains `userName` (the
 username); table/markdown show it.
+
+## Labels
+
+`--label` and the positional label argument on `card label add|remove` accept a
+label name. Labels are scoped to a board when one is known, otherwise the
+search spans every board. JSON gains `labelName`; table/markdown show it.
+Unnamed labels have no name to show and keep their ID.
