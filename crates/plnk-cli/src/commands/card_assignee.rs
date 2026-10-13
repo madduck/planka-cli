@@ -18,10 +18,12 @@ pub async fn execute(
             render_collection_named(client, &assignees, format, full, names).await?;
         }
         crate::app::CardAssigneeAction::Add { card, user } => {
+            let user = names.resolve_user(client, &user).await?;
             let assignee = client.add_assignee(&card, &user).await?;
             render_item_named(client, &assignee, format, full, names).await?;
         }
         crate::app::CardAssigneeAction::Remove { card, user } => {
+            let user = names.resolve_user(client, &user).await?;
             client.remove_assignee(&card, &user).await?;
             render_message("Assignee removed.", format)?;
         }

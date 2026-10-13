@@ -59,3 +59,9 @@ JSON gains `boardName`; table/markdown show it.
 `--list` and `--to-list` accept a list name. List search is scoped to the
 resolved `--board`, then to the boards of a resolved `--project`, otherwise it
 searches every board. JSON gains `listName`; table/markdown show it.
+
+## Users
+
+`--user` and the positional user argument on `card assignee` accept a username.
+Users are matched on their unique `username`. JSON gains `userName` (the
+username); table/markdown show it.
