@@ -195,6 +195,7 @@ pub async fn execute(
             board,
             card,
         } => {
+            let project = names.resolve_optional_project(client, project).await?;
             let scope = Scope {
                 project,
                 board,
@@ -208,6 +209,7 @@ pub async fn execute(
             card,
             name,
         } => {
+            let project = names.resolve_optional_project(client, project).await?;
             let scope = Scope {
                 project,
                 board,
@@ -223,6 +225,7 @@ pub async fn execute(
             name,
             base,
         } => {
+            let project = names.resolve_optional_project(client, project).await?;
             let scope = Scope {
                 project,
                 board,
