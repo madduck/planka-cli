@@ -171,6 +171,7 @@ pub async fn execute(
 ) -> Result<(), PlankaError> {
     match action {
         crate::app::CardAction::List { list, board, label } => {
+            let board = names.resolve_optional_board(client, board, None).await?;
             let cards = if let Some((board_id, list_id, label_ids)) =
                 resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
             {
@@ -259,6 +260,11 @@ pub async fn execute(
                 });
             }
 
+            let project = names.resolve_optional_project(client, project).await?;
+            let board = names
+                .resolve_optional_board(client, board, project.as_deref())
+                .await?;
+
             let cards = if let Some((board_id, list_id, label_ids)) =
                 resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
             {
@@ -345,6 +351,7 @@ pub async fn execute(
             to_board,
             position,
         } => {
+            let to_board = names.resolve_optional_board(client, to_board, None).await?;
             let pos = match position {
                 Some(p) => parse_position(&p)?,
                 None => 65536.0,

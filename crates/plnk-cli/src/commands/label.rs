@@ -16,14 +16,17 @@ pub async fn execute(
 ) -> Result<(), PlankaError> {
     match action {
         crate::app::LabelAction::List { board } => {
+            let board = names.resolve_board(client, &board, None).await?;
             let labels = client.list_labels(&board).await?;
             render_collection_named(client, &labels, format, full, names).await?;
         }
         crate::app::LabelAction::Find { board, name } => {
+            let board = names.resolve_board(client, &board, None).await?;
             let labels = client.find_labels(&board, &name).await?;
             render_collection_named(client, &labels, format, full, names).await?;
         }
         crate::app::LabelAction::Create { board, name, color } => {
+            let board = names.resolve_board(client, &board, None).await?;
             let label = client.create_label(&board, &name, &color).await?;
             render_item_named(client, &label, format, full, names).await?;
         }

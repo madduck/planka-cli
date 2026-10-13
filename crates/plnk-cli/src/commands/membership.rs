@@ -15,6 +15,9 @@ pub async fn execute(
     match action {
         crate::app::MembershipAction::List { project, board } => {
             let project = names.resolve_optional_project(client, project).await?;
+            let board = names
+                .resolve_optional_board(client, board, project.as_deref())
+                .await?;
             if let Some(board_id) = board {
                 let members = client.list_board_members(&board_id).await?;
                 render_collection_named(client, &members, format, full, names).await?;
@@ -34,6 +37,9 @@ pub async fn execute(
             role,
         } => {
             let project = names.resolve_optional_project(client, project).await?;
+            let board = names
+                .resolve_optional_board(client, board, project.as_deref())
+                .await?;
             if let Some(board_id) = board {
                 let member = client
                     .add_board_member(&board_id, &user, role.as_deref())
@@ -54,6 +60,9 @@ pub async fn execute(
             user,
         } => {
             let project = names.resolve_optional_project(client, project).await?;
+            let board = names
+                .resolve_optional_board(client, board, project.as_deref())
+                .await?;
             if let Some(board_id) = board {
                 // Find the membership ID by listing and matching user
                 let members = client.list_board_members(&board_id).await?;
