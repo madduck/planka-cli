@@ -14,6 +14,8 @@ and this project adheres to
   enabled, `plnk` resolves names to IDs and shows names in output:
   - projects: `--project` accepts a name; JSON gains `projectName` and
     table/markdown show it.
+  - boards: `--board` and `--to-board` accept a name; JSON gains `boardName` and
+    table/markdown show it.
 
 ## [0.3.0] - 2026-08-10
 

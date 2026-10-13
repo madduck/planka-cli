@@ -24,7 +24,7 @@ use plnk_core::api::{
     match_by_name,
 };
 use plnk_core::error::PlankaError;
-use plnk_core::models::Project;
+use plnk_core::models::{Board, Project};
 
 /// The kind of resource a foreign-key field points at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -73,6 +73,8 @@ pub struct NameIndex {
     list_board: HashMap<String, String>,
     /// Enumeration cache for project name search.
     projects: Option<Vec<Project>>,
+    /// Enumeration cache for board name search.
+    boards: Option<Vec<Board>>,
 }
 
 impl NameIndex {
@@ -116,6 +118,7 @@ impl NameIndex {
     fn kind_for_field(field: &str) -> Option<NameKind> {
         match field {
             "projectId" => Some(NameKind::Project),
+            "boardId" => Some(NameKind::Board),
             _ => None,
         }
     }
@@ -166,6 +169,12 @@ impl NameIndex {
                 let project = client.get_project(id).await?;
                 Ok(Some(project.name))
             }
+            NameKind::Board => {
+                let board = client.get_board(id).await?;
+                self.board_project
+                    .insert(board.id.clone(), board.project_id.clone());
+                Ok(Some(board.name))
+            }
             _ => Ok(None),
         }
     }
@@ -204,6 +213,83 @@ impl NameIndex {
         resolve_resource(projects, "--project", "project", query, |project| {
             project.id.clone()
         })
+    }
+
+    /// Load and cache every board across every project.
+    async fn ensure_boards<C>(&mut self, client: &C) -> Result<(), PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if self.boards.is_some() {
+            return Ok(());
+        }
+        self.ensure_projects(client).await?;
+        let project_ids: Vec<String> = self
+            .projects
+            .as_ref()
+            .expect("projects loaded")
+            .iter()
+            .map(|project| project.id.clone())
+            .collect();
+
+        let mut boards = Vec::new();
+        for project_id in project_ids {
+            for board in client.list_boards(&project_id).await? {
+                self.remember(NameKind::Board, &board.id, &board.name);
+                self.board_project
+                    .insert(board.id.clone(), board.project_id.clone());
+                boards.push(board);
+            }
+        }
+        self.boards = Some(boards);
+        Ok(())
+    }
+
+    /// Resolve a board name (or ID) to an ID.
+    ///
+    /// When a project ID is supplied, only that project's boards are
+    /// considered.
+    pub async fn resolve_board<C>(
+        &mut self,
+        client: &C,
+        query: &str,
+        project: Option<&str>,
+    ) -> Result<String, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if !self.enabled {
+            return Ok(query.to_string());
+        }
+        self.ensure_boards(client).await?;
+        let boards = self.boards.as_ref().expect("boards loaded");
+        let candidates: Vec<Board> = match project {
+            Some(project_id) => boards
+                .iter()
+                .filter(|board| board.project_id == project_id)
+                .cloned()
+                .collect(),
+            None => boards.clone(),
+        };
+        resolve_resource(&candidates, "--board", "board", query, |board| {
+            board.id.clone()
+        })
+    }
+
+    /// Resolve an optional `--board` / `--to-board` value.
+    pub async fn resolve_optional_board<C>(
+        &mut self,
+        client: &C,
+        board: Option<String>,
+        project: Option<&str>,
+    ) -> Result<Option<String>, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        match board {
+            Some(board) => Ok(Some(self.resolve_board(client, &board, project).await?)),
+            None => Ok(None),
+        }
     }
 
     /// Resolve an optional `--project` value.
