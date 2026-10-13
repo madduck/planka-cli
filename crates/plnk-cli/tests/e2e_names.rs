@@ -378,6 +378,70 @@ async fn comment_user_is_decorated_with_username() {
     assert_eq!(json["data"][0]["userName"], "alice");
 }
 
+// ─── Label: input resolution and JSON decoration ─────────────────────────
+
+fn board_snapshot_with_labels() -> serde_json::Value {
+    serde_json::json!({
+        "item": {"id":"10","name":"Sprint","position":65536,"projectId":"1",
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null},
+        "included": {
+            "labels": [
+                {"id":"50","boardId":"10","name":"urgent","color":"berry-red","position":65536,
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ]
+        }
+    })
+}
+
+#[tokio::test]
+async fn label_name_resolves_and_decorates_json() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(project_list_body()))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/projects/1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(project_snapshot_with_boards(
+                serde_json::json!([
+                    {"id":"10","projectId":"1","name":"Sprint","position":65536,
+                     "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+                ]),
+            )),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/boards/10"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(board_snapshot_with_labels()))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/cards/1000/card-labels"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "item": {"id":"cl1","cardId":"1000","labelId":"50",
+                     "createdAt":"2026-01-01T00:00:00Z"}
+        })))
+        .mount(&server)
+        .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "--names", "card", "label", "add", "1000", "urgent", "--output", "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["data"]["labelId"], "50");
+    assert_eq!(json["data"]["labelName"], "urgent");
+}
+
 #[tokio::test]
 async fn ambiguous_list_name_lists_candidates() {
     let server = MockServer::start().await;

@@ -20,6 +20,8 @@ and this project adheres to
     table/markdown show it.
   - users: `--user` and the positional assignee user accept a username; JSON
     gains `userName` (the username) and table/markdown show it.
+  - labels: `--label` and the positional card-label argument accept a name; JSON
+    gains `labelName` and table/markdown show it.
 
 ## [0.3.0] - 2026-08-10
 
