@@ -194,6 +194,9 @@ pub async fn execute(
             closed,
         } => {
             let board = names.resolve_optional_board(client, board, None).await?;
+            let list = names
+                .resolve_optional_list(client, list, board.as_deref(), None)
+                .await?;
             let due_range = DueDateRange::parse(
                 due_after.as_deref(),
                 "--due-after",
@@ -308,6 +311,9 @@ pub async fn execute(
             let board = names
                 .resolve_optional_board(client, board, project.as_deref())
                 .await?;
+            let list = names
+                .resolve_optional_list(client, list, board.as_deref(), project.as_deref())
+                .await?;
             let due_range = DueDateRange::parse(
                 due_after.as_deref(),
                 "--due-after",
@@ -360,6 +366,7 @@ pub async fn execute(
             description,
             position,
         } => {
+            let list = names.resolve_list(client, &list, None, None).await?;
             let desc = match description {
                 Some(raw) => Some(resolve_text(&raw)?),
                 None => None,
@@ -417,6 +424,9 @@ pub async fn execute(
             position,
         } => {
             let to_board = names.resolve_optional_board(client, to_board, None).await?;
+            let to_list = names
+                .resolve_list(client, &to_list, None, to_board.as_deref())
+                .await?;
             let pos = match position {
                 Some(p) => parse_position(&p)?,
                 None => 65536.0,
