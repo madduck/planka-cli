@@ -299,6 +299,85 @@ async fn list_name_is_substituted_in_table() {
         .stdout(predicate::str::contains("Todo"));
 }
 
+// ─── User: input resolution and JSON decoration ──────────────────────────
+
+fn user_body() -> serde_json::Value {
+    serde_json::json!({
+        "items": [
+            {"id":"7","name":"Alice Smith","username":"alice","role":"editor",
+             "isDeactivated":false,"createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+        ]
+    })
+}
+
+#[tokio::test]
+async fn username_resolves_for_assignee_add() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/users"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(user_body()))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/cards/1000/card-memberships"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "item": {"id":"m1","cardId":"1000","userId":"7",
+                     "createdAt":"2026-01-01T00:00:00Z"}
+        })))
+        .mount(&server)
+        .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "--names", "card", "assignee", "add", "1000", "alice", "--output", "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["data"]["userId"], "7");
+    assert_eq!(json["data"]["userName"], "alice");
+}
+
+#[tokio::test]
+async fn comment_user_is_decorated_with_username() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/cards/1000/comments"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "items": [
+                {"id":"c1","cardId":"1000","userId":"7","text":"hi",
+                 "createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+            ]
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/users/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "item": {"id":"7","name":"Alice Smith","username":"alice","role":"editor",
+                     "isDeactivated":false,"createdAt":"2026-01-01T00:00:00Z","updatedAt":null}
+        })))
+        .mount(&server)
+        .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "--names", "comment", "list", "--card", "1000", "--output", "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["data"][0]["userName"], "alice");
+}
+
 #[tokio::test]
 async fn ambiguous_list_name_lists_candidates() {
     let server = MockServer::start().await;

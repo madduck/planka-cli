@@ -24,7 +24,7 @@ use plnk_core::api::{
     match_by_name,
 };
 use plnk_core::error::PlankaError;
-use plnk_core::models::{Board, List, Project};
+use plnk_core::models::{Board, List, Project, User};
 
 /// The kind of resource a foreign-key field points at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -77,6 +77,8 @@ pub struct NameIndex {
     boards: Option<Vec<Board>>,
     /// Enumeration cache for list name search.
     lists: Option<Vec<List>>,
+    /// Enumeration cache for user name search.
+    users: Option<Vec<User>>,
 }
 
 impl NameIndex {
@@ -122,6 +124,7 @@ impl NameIndex {
             "projectId" => Some(NameKind::Project),
             "boardId" => Some(NameKind::Board),
             "listId" => Some(NameKind::List),
+            "userId" => Some(NameKind::User),
             _ => None,
         }
     }
@@ -183,6 +186,10 @@ impl NameIndex {
                 self.list_board
                     .insert(list.id.clone(), list.board_id.clone());
                 Ok(Some(list.name))
+            }
+            NameKind::User => {
+                let user = client.get_user(id).await?;
+                Ok(Some(user.username.unwrap_or(user.name)))
             }
             _ => Ok(None),
         }
@@ -360,6 +367,38 @@ impl NameIndex {
         resolve_resource(&candidates, "--list", "list", query, |list| list.id.clone())
     }
 
+    /// Load and cache every user, keyed on the unique username.
+    async fn ensure_users<C>(&mut self, client: &C) -> Result<(), PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if self.users.is_some() {
+            return Ok(());
+        }
+        let users = client.list_users().await?;
+        for user in &users {
+            self.remember(NameKind::User, &user.id, username_of(user));
+        }
+        self.users = Some(users);
+        Ok(())
+    }
+
+    /// Resolve a username (or user ID) to an ID.
+    pub async fn resolve_user<C>(&mut self, client: &C, query: &str) -> Result<String, PlankaError>
+    where
+        C: NameSource + ?Sized,
+    {
+        if !self.enabled {
+            return Ok(query.to_string());
+        }
+        self.ensure_users(client).await?;
+        let users = self.users.as_ref().expect("users loaded");
+        let candidates: Vec<Username> = users.iter().map(Username).collect();
+        resolve_resource(&candidates, "--user", "user", query, |user| {
+            user.0.id.clone()
+        })
+    }
+
     /// Resolve an optional `--list` / `--to-list` value.
     pub async fn resolve_optional_list<C>(
         &mut self,
@@ -531,6 +570,21 @@ impl NameIndex {
             return self.board_project.get(board_id).cloned();
         }
         None
+    }
+}
+
+/// The value a user is known by: the unique username, falling back to the
+/// display name when Planka has no username.
+fn username_of(user: &User) -> &str {
+    user.username.as_deref().unwrap_or(&user.name)
+}
+
+/// Adapter so the three-tier matcher keys users on their username.
+struct Username<'a>(&'a User);
+
+impl Named for Username<'_> {
+    fn name(&self) -> &str {
+        username_of(self.0)
     }
 }
 
