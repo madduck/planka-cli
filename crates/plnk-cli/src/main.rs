@@ -4,6 +4,7 @@ mod app;
 mod commands;
 mod help;
 mod input;
+mod names;
 mod output;
 
 use app::{App, Command};
@@ -273,8 +274,10 @@ fn merge_transport_policy(
     Ok(policy)
 }
 
-fn resolve_transport_policy(flags: &TransportOverrides) -> Result<TransportPolicy, PlankaError> {
-    let config_http = read_config()?.and_then(|config| config.http);
+fn resolve_transport_policy(
+    config_http: Option<HttpConfig>,
+    flags: &TransportOverrides,
+) -> Result<TransportPolicy, PlankaError> {
     let env = TransportOverrides {
         max_in_flight: parse_env::<usize>("PLNK_HTTP_MAX_IN_FLIGHT")?,
         rate_limit: parse_env::<u32>("PLNK_HTTP_RATE_LIMIT")?,
@@ -286,6 +289,14 @@ fn resolve_transport_policy(flags: &TransportOverrides) -> Result<TransportPolic
     };
 
     merge_transport_policy(config_http, &env, flags)
+}
+
+/// Whether name resolution is active for this invocation.
+///
+/// `--names` turns the mode on, `--no-names` turns it off and overrides the
+/// config file. Without either flag the config decides.
+fn effective_names(flag_names: bool, flag_no_names: bool, config_names: bool) -> bool {
+    flag_names || (!flag_no_names && config_names)
 }
 
 /// Build a `PlankaClientV1` from resolved credentials.
@@ -327,13 +338,30 @@ async fn main() {
     };
     apply_scope_env(&mut command);
 
-    let transport_policy = match resolve_transport_policy(&transport_flags) {
+    let config = match read_config() {
+        Ok(config) => config,
+        Err(e) => {
+            render_error(&e, app.output);
+            std::process::exit(e.exit_code());
+        }
+    };
+
+    let names_enabled = effective_names(
+        app.names,
+        app.no_names,
+        config.as_ref().is_some_and(|config| config.names),
+    );
+
+    let config_http = config.as_ref().and_then(|config| config.http.clone());
+    let transport_policy = match resolve_transport_policy(config_http, &transport_flags) {
         Ok(policy) => policy,
         Err(e) => {
             render_error(&e, app.output);
             std::process::exit(e.exit_code());
         }
     };
+
+    let mut names = names::NameIndex::new(names_enabled);
 
     let result = match command {
         Command::Init(_cmd) => commands::init::execute(
@@ -358,7 +386,9 @@ async fn main() {
             app.token.as_deref(),
             &transport_policy,
         ) {
-            Ok(client) => commands::user::execute(&client, cmd.action, app.output, app.full).await,
+            Ok(client) => {
+                commands::user::execute(&client, cmd.action, app.output, app.full, &mut names).await
+            }
             Err(e) => Err(e),
         },
         Command::Project(cmd) => match build_client(
@@ -367,7 +397,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::project::execute(&client, cmd.action, app.output, app.yes, app.full).await
+                commands::project::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -377,7 +410,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::board::execute(&client, cmd.action, app.output, app.yes, app.full).await
+                commands::board::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -387,7 +423,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::list::execute(&client, cmd.action, app.output, app.yes, app.full).await
+                commands::list::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -398,17 +437,28 @@ async fn main() {
         ) {
             Ok(client) => match cmd.action {
                 crate::app::CardAction::Field(sub) => {
-                    commands::card_field::execute(&client, sub.action, app.output, app.full).await
+                    commands::card_field::execute(
+                        &client, sub.action, app.output, app.full, &mut names,
+                    )
+                    .await
                 }
                 crate::app::CardAction::Label(sub) => {
-                    commands::card_label::execute(&client, sub.action, app.output, app.full).await
+                    commands::card_label::execute(
+                        &client, sub.action, app.output, app.full, &mut names,
+                    )
+                    .await
                 }
                 crate::app::CardAction::Assignee(sub) => {
-                    commands::card_assignee::execute(&client, sub.action, app.output, app.full)
-                        .await
+                    commands::card_assignee::execute(
+                        &client, sub.action, app.output, app.full, &mut names,
+                    )
+                    .await
                 }
                 action => {
-                    commands::card::execute(&client, action, app.output, app.yes, app.full).await
+                    commands::card::execute(
+                        &client, action, app.output, app.yes, app.full, &mut names,
+                    )
+                    .await
                 }
             },
             Err(e) => Err(e),
@@ -419,7 +469,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::task::execute(&client, cmd.action, app.output, app.yes, app.full).await
+                commands::task::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -429,7 +482,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::comment::execute(&client, cmd.action, app.output, app.yes, app.full).await
+                commands::comment::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -439,7 +495,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::label::execute(&client, cmd.action, app.output, app.yes, app.full).await
+                commands::label::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -449,7 +508,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::field::execute(&client, cmd.action, app.output, app.yes, app.full).await
+                commands::field::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -459,8 +521,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::field_group::execute(&client, cmd.action, app.output, app.yes, app.full)
-                    .await
+                commands::field_group::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -470,8 +534,10 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::attachment::execute(&client, cmd.action, app.output, app.yes, app.full)
-                    .await
+                commands::attachment::execute(
+                    &client, cmd.action, app.output, app.yes, app.full, &mut names,
+                )
+                .await
             }
             Err(e) => Err(e),
         },
@@ -481,7 +547,8 @@ async fn main() {
             &transport_policy,
         ) {
             Ok(client) => {
-                commands::membership::execute(&client, cmd.action, app.output, app.full).await
+                commands::membership::execute(&client, cmd.action, app.output, app.full, &mut names)
+                    .await
             }
             Err(e) => Err(e),
         },
@@ -499,6 +566,7 @@ async fn main() {
                     app.output,
                     app.yes,
                     app.full,
+                    &mut names,
                 )
                 .await
             }
@@ -516,6 +584,7 @@ async fn main() {
                     app.output,
                     app.yes,
                     app.full,
+                    &mut names,
                 )
                 .await
             }
@@ -533,6 +602,7 @@ async fn main() {
                     app.output,
                     app.yes,
                     app.full,
+                    &mut names,
                 )
                 .await
             }
@@ -550,6 +620,7 @@ async fn main() {
                     app.output,
                     app.yes,
                     app.full,
+                    &mut names,
                 )
                 .await
             }
@@ -567,6 +638,7 @@ async fn main() {
                     app.output,
                     app.yes,
                     app.full,
+                    &mut names,
                 )
                 .await
             }
@@ -584,6 +656,7 @@ async fn main() {
                     app.output,
                     app.yes,
                     app.full,
+                    &mut names,
                 )
                 .await
             }
@@ -609,6 +682,7 @@ async fn main() {
                     app.output,
                     app.yes,
                     app.full,
+                    &mut names,
                 )
                 .await
             }
@@ -626,6 +700,7 @@ async fn main() {
                     app.output,
                     app.yes,
                     app.full,
+                    &mut names,
                 )
                 .await
             }
@@ -645,6 +720,15 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_precedence_is_flag_over_no_flag_over_config() {
+        assert!(effective_names(true, false, false));
+        assert!(effective_names(true, false, true));
+        assert!(!effective_names(false, true, true));
+        assert!(effective_names(false, false, true));
+        assert!(!effective_names(false, false, false));
+    }
 
     #[test]
     fn transport_policy_precedence_is_flags_over_env_over_config_over_defaults() {
