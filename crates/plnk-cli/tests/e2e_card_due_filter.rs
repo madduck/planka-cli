@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use predicates::prelude::*;
 use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -316,4 +317,42 @@ async fn card_find_invalid_due_timestamp_exits_2() {
             .unwrap()
             .contains("not-a-date")
     );
+}
+
+#[tokio::test]
+async fn card_find_warns_on_unparseable_due_date() {
+    let server = MockServer::start().await;
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([
+                card_json("card-ok", "Card ok", json!("2026-04-25T12:00:00.000Z")),
+                card_json("card-bad", "Card bad", json!("not-a-timestamp"))
+            ]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "card",
+            "find",
+            "--board",
+            "board-1",
+            "--due-after",
+            "2026-04-01",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("unparseable dueDate"))
+        .stderr(predicate::str::contains("card-bad"))
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(ids_from(&output), vec!["card-ok"]);
 }

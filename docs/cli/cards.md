@@ -83,7 +83,8 @@ without an offset is treated as UTC.
 The bounds are strict: `--due-after` keeps cards due **strictly after** its
 timestamp and `--due-before` keeps cards due **strictly before** its timestamp. A
 card due exactly on a bound is excluded. Cards without a due date are excluded
-whenever a due bound is set.
+whenever a due bound is set. A card whose due date cannot be parsed as ISO 8601
+is excluded and reported on stderr.
 
 Always returns a collection. Multiple results are expected, not an error.
 

@@ -58,8 +58,16 @@ impl DueDateRange {
         let Some(raw) = card.due_date.as_deref() else {
             return false;
         };
-        let Ok(due) = parse_iso8601_utc(raw) else {
-            return false;
+        let due = match parse_iso8601_utc(raw) {
+            Ok(due) => due,
+            Err(reason) => {
+                eprintln!(
+                    "Warning: card {} has an unparseable dueDate '{raw}': {reason}; \
+                     excluded from due-date filtering",
+                    card.id
+                );
+                return false;
+            }
         };
         let due = due.unix_timestamp_nanos();
         self.after
@@ -241,6 +249,18 @@ mod tests {
         ]);
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].due_date.as_deref(), Some("2026-04-21T12:00:00Z"));
+    }
+
+    #[test]
+    fn unparseable_due_date_is_excluded() {
+        let range =
+            DueDateRange::parse(Some("2026-01-01"), "--due-after", None, "--due-before").unwrap();
+        let cards = range.filter(vec![
+            card(Some("2026-04-20T00:00:00Z")),
+            card(Some("not-a-timestamp")),
+        ]);
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].due_date.as_deref(), Some("2026-04-20T00:00:00Z"));
     }
 
     #[test]
