@@ -166,6 +166,7 @@ cannot be determined, `plnk` falls back to UTC.
 
 | Form | Meaning |
 |------|---------|
+| `now` | The exact reference instant, time of day included |
 | `today`, `tomorrow`, `yesterday` | That calendar day |
 | `in 3 days`, `in 2 weeks`, `in 1 month` | Calendar arithmetic forward |
 | `2 weeks from today` | Same as `in 2 weeks` |
@@ -177,9 +178,12 @@ cannot be determined, `plnk` falls back to UTC.
 
 Rules:
 
-- Every relative form resolves to the **start of the day** (00:00:00) in your
-  local timezone. `--due-before tomorrow` therefore excludes cards due today as
-  well as tomorrow, because the bounds are strict.
+- Every relative form **except `now`** resolves to the **start of the day**
+  (00:00:00) in your local timezone. `now` resolves to the reference instant
+  itself, keeping the current time of day, so `--due-before now` selects overdue
+  cards and `--due-after now` selects cards due in the future. `--due-before
+  tomorrow` therefore excludes cards due today as well as tomorrow, because the
+  bounds are strict.
 - Weekday names always mean the *next* occurrence. `monday` on a Monday means the
   Monday a week later, never today.
 - Month arithmetic clamps to the end of the target month: `next month` from 31

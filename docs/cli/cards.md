@@ -90,7 +90,7 @@ Due-date bounds accept ISO 8601 timestamps: `YYYY-MM-DD` (midnight UTC) or
 without an offset is treated as UTC.
 
 They also accept relative dates, resolved against the current time in your local
-timezone: `today`, `tomorrow`, `yesterday`, `next week`, `next month`,
+timezone: `now`, `today`, `tomorrow`, `yesterday`, `next week`, `next month`,
 `2 weeks from today`, `in 3 days`, `3 days ago`, `this month`, and bare weekday
 names. See [Timestamps](grammar.md#relative-dates) for the full grammar.
 
@@ -107,11 +107,15 @@ whenever a due bound is set. A card whose due date cannot be parsed as ISO 8601
 is excluded and reported on stderr.
 
 Relative dates resolve to the **start of the day** in local time, so
-`--due-before tomorrow` excludes cards due today as well as tomorrow. To select
+`--due-before tomorrow` excludes cards due today as well as tomorrow. `now` is
+the exception: it keeps the current time of day, so `--due-before now` selects
+overdue cards and `--due-after now` selects cards due in the future. To select
 cards due *today*, combine the two bounds:
 
 ```bash
 plnk card list --board <boardId> --due-after today --due-before tomorrow
+plnk card list --board <boardId> --due-before now          # overdue
+plnk card list --board <boardId> --due-after now           # still to come
 ```
 
 Always returns a collection. Multiple results are expected, not an error.

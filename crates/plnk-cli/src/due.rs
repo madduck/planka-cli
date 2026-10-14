@@ -86,8 +86,8 @@ impl DueDateRange {
 
 /// Grammar summary shown in every due-date parse error.
 const DUE_DATE_GRAMMAR: &str = "expected an ISO 8601 timestamp (YYYY-MM-DD or \
-     YYYY-MM-DDThh:mm[:ss[.fff]][Z|±hh:mm]) or a relative date such as 'today', \
-     'tomorrow', 'next week', 'in 3 days', or '2 weeks from today'";
+     YYYY-MM-DDThh:mm[:ss[.fff]][Z|±hh:mm]) or a relative date such as 'now', \
+     'today', 'tomorrow', 'next week', 'in 3 days', or '2 weeks from today'";
 
 /// Resolve a due-date expression to an instant.
 ///
@@ -126,13 +126,15 @@ fn start_of_day(now: OffsetDateTime) -> OffsetDateTime {
 ///
 /// Returns `None` for anything the grammar does not recognise, leaving ISO 8601
 /// parsing to the caller. Bare relative dates resolve to the start of the day in
-/// `now`'s offset.
+/// `now`'s offset; `now` is the exception and returns the reference instant
+/// itself, keeping the time of day.
 fn parse_relative(raw: &str, now: OffsetDateTime) -> Option<OffsetDateTime> {
     let text = raw.trim().to_ascii_lowercase();
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let today = start_of_day(now);
 
     match text.as_str() {
+        "now" => return Some(now),
         "today" => return Some(today),
         "tomorrow" => return Some(today + time::Duration::days(1)),
         "yesterday" => return Some(today - time::Duration::days(1)),
@@ -601,11 +603,27 @@ mod tests {
         );
     }
 
+    /// `now` is the exception to "start of day": it returns the reference
+    /// instant itself, time of day and offset included.
+    #[test]
+    fn relative_now_keeps_the_time_of_day() {
+        let parsed = parse_bound("now", "--due-before", test_now()).unwrap();
+        assert_eq!(parsed, test_now());
+        assert_eq!(parsed.time(), time::Time::from_hms(15, 30, 0).unwrap());
+        assert_eq!(parsed.offset(), test_now().offset());
+        // Contrast with `today`, which collapses to midnight.
+        assert_ne!(parsed, start_of_day(test_now()));
+    }
+
     /// Case and surrounding whitespace must not matter.
     #[test]
     fn relative_day_words_are_case_and_space_insensitive() {
         assert_eq!(relative("  TODAY  "), relative("today"));
         assert_eq!(relative("ToMoRrOw"), relative("tomorrow"));
+        assert_eq!(
+            parse_bound("  NOW  ", "--due-before", test_now()).unwrap(),
+            parse_bound("now", "--due-before", test_now()).unwrap()
+        );
     }
 
     #[test]
@@ -809,6 +827,16 @@ mod tests {
         assert_eq!(
             parse_due_date_input(Some("tomorrow"), false, "--due-date", test_now()).unwrap(),
             DueDateUpdate::Set("2026-04-25T22:00:00Z".to_string())
+        );
+    }
+
+    /// `now` on the write path keeps the time of day, normalised to UTC.
+    #[test]
+    fn due_date_input_accepts_now() {
+        // test_now() is 2026-04-25T15:30+02:00, i.e. 13:30 UTC.
+        assert_eq!(
+            parse_due_date_input(Some("now"), false, "--due-date", test_now()).unwrap(),
+            DueDateUpdate::Set("2026-04-25T13:30:00Z".to_string())
         );
     }
 
