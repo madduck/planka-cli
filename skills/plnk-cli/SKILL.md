@@ -1,51 +1,39 @@
 ---
 name: plnk-cli
-description:
-  Use this skill when the user wants to inspect or manage Planka projects,
-  boards, lists, cards, tasks, comments, labels, custom fields (field groups,
-  fields, card field values), attachments, memberships, users, or authentication
-  with the plnk CLI.
+description: Use this skill when the user wants to inspect or manage Planka projects, boards, lists, cards, tasks, comments, labels, custom fields (field groups, fields, card field values), attachments, memberships, users, or authentication with the plnk CLI.
 ---
 
 # plnk-cli
 
-Use `plnk` as the canonical interface to Planka. Do not invent a parallel task
-API or assume a fixed kanban workflow. Operate through the CLI, prefer
-machine-readable output, and resolve ambiguity before mutating state.
+Use `plnk` as the canonical interface to Planka. Do not invent a parallel task API or assume a fixed kanban workflow. Operate through the CLI, prefer machine-readable output, and resolve ambiguity before mutating state.
 
 ## When to use this skill
 
 Use this skill when the user wants to:
 
-- inspect Planka projects, boards, lists, cards, tasks, comments, labels,
-  attachments, memberships, or users
+- inspect Planka projects, boards, lists, cards, tasks, comments, labels, attachments, memberships, or users
 - create, update, move, archive, unarchive, or delete Planka resources
 - find cards, lists, boards, or labels by name/title
-- add comments, tasks, assignees, labels, custom field values, or attachments to
-  cards
+- add comments, tasks, assignees, labels, custom field values, or attachments to cards
 - understand or debug `plnk` command behavior
 
 ## Core Rules
 
 - Use `plnk` as the source of truth for Planka operations.
-- Prefer `--output json` for agent work unless the user explicitly asked for
-  table or markdown output.
+- Prefer `--output json` for agent work unless the user explicitly asked for table or markdown output.
 - IDs are opaque strings. Pass them through exactly as returned.
 - Use `get` for exact ID lookup.
 - Use `find` for name/title lookup.
 - `find` may return multiple results. Do not guess when matches are ambiguous.
-- Prefer the narrowest scope possible: `--list` over `--board`, `--board` over
-  `--project`.
+- Prefer the narrowest scope possible: `--list` over `--board`, `--board` over `--project`.
 - `--names` (or `names = true` in the config) accepts names where IDs are
   expected and shows names in output. Card IDs are not resolved by name. When
   the mode is on, an ambiguous name is an error listing the candidates — never
   guess.
 - Read before write when current state is unclear.
 - After discovery, perform mutations using IDs, not names.
-- Ask before destructive or bulk operations unless the user was already
-  explicit.
-- Do not maintain a parallel TODO system unless the user explicitly asks for
-  one.
+- Ask before destructive or bulk operations unless the user was already explicit.
+- Do not maintain a parallel TODO system unless the user explicitly asks for one.
 
 ## Resource Hierarchy
 
@@ -76,7 +64,7 @@ Implications:
 - labels live under boards
 - `field-group list` requires exactly one of `--project`, `--board`, or `--card`
 - `field list` requires exactly one of `--group` or `--base-group`
-- custom field _values_ live under cards: `card field list|set|clear`
+- custom field *values* live under cards: `card field list|set|clear`
 
 ## Default Operating Procedure
 
@@ -91,30 +79,23 @@ When the user asks to inspect or modify Planka state:
 
 3. **Resolve names before mutation.**
    - Find the project, board, list, card, label, or user first.
-   - If multiple candidates match, summarize them and ask the user which one
-     they mean.
+   - If multiple candidates match, summarize them and ask the user which one they mean.
 
 4. **Read current state before writing when context is incomplete.**
-   - Inspect the current board/list/card/task state before moving or editing if
-     the target is not fully specified.
+   - Inspect the current board/list/card/task state before moving or editing if the target is not fully specified.
 
 5. **Mutate by ID.**
-   - Once a target has been identified, use the returned IDs for `update`,
-     `move`, `archive`, `delete`, `label add/remove`, `assignee add/remove`, and
-     similar operations.
+   - Once a target has been identified, use the returned IDs for `update`, `move`, `archive`, `delete`, `label add/remove`, `assignee add/remove`, and similar operations.
 
 6. **Confirm destructive or broad actions.**
-   - Ask before `delete`, `archive`, bulk edits, or wide-scope moves unless the
-     user was explicit.
+   - Ask before `delete`, `archive`, bulk edits, or wide-scope moves unless the user was explicit.
 
 7. **Report back with resolved names and IDs when useful.**
-   - Especially after create/move/find operations or when ambiguity was
-     resolved.
+   - Especially after create/move/find operations or when ambiguity was resolved.
 
 ## Lists and Workflow
 
-Lists are board-defined and may vary across users, teams, and boards. Do **not**
-assume canonical columns.
+Lists are board-defined and may vary across users, teams, and boards. Do **not** assume canonical columns.
 
 Never assume that a board has any specific list names such as:
 
@@ -125,8 +106,7 @@ Never assume that a board has any specific list names such as:
 - Blocked
 - WontDo
 
-When the user expresses workflow intent such as “move this to in progress”,
-“send this to review”, “put it in backlog”, or “mark this blocked”:
+When the user expresses workflow intent such as “move this to in progress”, “send this to review”, “put it in backlog”, or “mark this blocked”:
 
 1. inspect the board's actual lists first
 2. map the user's intent to an existing list
@@ -163,7 +143,7 @@ JSON envelopes are shaped like:
 and errors like:
 
 ```json
-{ "success": false, "error": { "type": "ResourceNotFound", "message": "..." } }
+{"success": false, "error": {"type": "ResourceNotFound", "message": "..."}}
 ```
 
 ## Important Constraints
@@ -174,15 +154,13 @@ and errors like:
   - `plnk field-group` — the groups (project-level ones are reusable templates)
   - `plnk field` — the named slots inside a group
   - `plnk card field` — the values a card stores
-- A card group adopted from a template has `name: null` and **no fields of its
-  own** — its fields belong to the base group. `field list --group <adoptedId>`
-  returning nothing is correct; ask `field list --base-group <baseId>`. See
-  `references/api-quirks.md`.
-- `card field set/clear` accept an ID **or a name** for `--group` and `--field`,
-  resolving through the base group. Values are capped at 512 chars, cannot be
-  empty, and `clear` is idempotent.
-- There is no server-side filter by custom field value — filter a snapshot
-  locally.
+- A card group adopted from a template has `name: null` and **no fields of its own** — its
+  fields belong to the base group. `field list --group <adoptedId>` returning nothing is
+  correct; ask `field list --base-group <baseId>`. See `references/api-quirks.md`.
+- `card field set/clear` accept an ID **or a name** for `--group` and `--field`, resolving
+  through the base group. Values are capped at 512 chars, cannot be empty, and `clear` is
+  idempotent.
+- There is no server-side filter by custom field value — filter a snapshot locally.
 - There is no standalone `get` for `task`, `comment`, or `label`.
   - use `task list --card <cardId>`
   - use `comment list --card <cardId>`
@@ -233,8 +211,7 @@ plnk comment create --card <cardId> --text "Starting work" --output json
 
 ## When Unsure
 
-If command syntax, flags, or resource behavior are uncertain, inspect
-machine-readable help instead of guessing:
+If command syntax, flags, or resource behavior are uncertain, inspect machine-readable help instead of guessing:
 
 ```bash
 plnk --help --output json
