@@ -551,9 +551,12 @@ pub enum CardAction {
         /// New description (literal, "-" for stdin, "@file" for file)
         #[arg(long)]
         description: Option<String>,
-        /// New due date as ISO 8601 (omit to leave unchanged)
+        /// New due date as ISO 8601
         #[arg(long)]
         due_date: Option<String>,
+        /// Remove the card's due date
+        #[arg(long, conflicts_with = "due_date")]
+        clear_due_date: bool,
     },
     /// Move a card to a different list (optionally on a different board)
     Move {

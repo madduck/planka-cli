@@ -42,8 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trimmed JSON projection gains `dueDate` for the same reason, keeping it a
   strict subset of the full card representation.
 - `plnk card update --due-date <iso8601>` sets a card's due date. The value is
-  validated client-side and normalised to UTC before the request is sent. There
-  is no flag to clear a due date yet.
+  validated client-side and normalised to UTC before the request is sent.
+  `plnk card update --clear-due-date` removes it, sending an explicit `null`;
+  the two flags are mutually exclusive. Omitting both leaves the stored due date
+  unchanged.
 
 ## [0.3.0] - 2026-08-10
 
