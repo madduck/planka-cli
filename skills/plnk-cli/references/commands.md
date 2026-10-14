@@ -194,8 +194,9 @@ Alias: `plnk cards --list <listId>`
 - `find` requires exactly one scope flag (`--list`, `--board`, or `--project`).
 - `find --board` fetches the board snapshot and searches all cards across lists.
 - `find --project` fetches all boards in the project, then all cards in each board.
-- `find` needs at least one of `--title`, `--label`, `--due-after`, or `--due-before`.
+- `find` needs at least one of `--title`, `--label`, `--due-after`, `--due-before`, or `--closed`.
 - `--due-after` / `--due-before` take ISO 8601 timestamps or relative dates (`now`, `today`, `next week`, `2 weeks from today`) and are strict (`<`, not `≤`). Relative dates resolve to the start of the day in local time, except `now`, which keeps the current time of day (`--due-before now` selects overdue cards). Cards without a due date are excluded whenever a bound is set. Both `card list` and `card find` accept them; on `card list` they filter without changing the `--list` / `--board` scope requirement.
+- A due query excludes closed cards unless `--include-closed` is passed. `--closed` keeps only closed cards. The two flags conflict and exit `2` together. Without a due bound, closed cards are returned as before.
 - `--description` accepts literal text, `-` for stdin, `@file.md` for file.
 - `--due-date` accepts ISO 8601 or a relative date (`now`, `tomorrow`, `in 2 weeks`) and is normalised to UTC; `--clear-due-date` removes the due date (mutually exclusive).
 - `--position top` = position 0.0, `bottom` = max float, or provide a numeric value.

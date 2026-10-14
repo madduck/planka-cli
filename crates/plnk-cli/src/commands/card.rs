@@ -1,6 +1,6 @@
 use plnk_core::api::{CardApi, LabelApi, ListApi, match_by_name};
 use plnk_core::error::PlankaError;
-use plnk_core::models::{CreateCard, ErrorFailure, FindScope, Label, MoveCard, UpdateCard};
+use plnk_core::models::{Card, CreateCard, ErrorFailure, FindScope, Label, MoveCard, UpdateCard};
 use serde::Serialize;
 
 use crate::app::OutputFormat;
@@ -21,6 +21,19 @@ struct CardGetManyMeta {
     missing_ids: Vec<String>,
     concurrency: usize,
     allow_missing: bool,
+}
+
+/// Keep only closed cards when `closed` is set, otherwise pass through.
+///
+/// This is the explicit `--closed` filter. It is separate from the implicit
+/// closed-card exclusion inside [`DueDateRange::filter`], which a due query
+/// applies unless `--include-closed` is given.
+fn filter_closed(cards: Vec<Card>, closed: bool) -> Vec<Card> {
+    if closed {
+        cards.into_iter().filter(|card| card.is_closed).collect()
+    } else {
+        cards
+    }
 }
 
 /// Parse position flag: "top", "bottom", or numeric value.
@@ -174,6 +187,8 @@ pub async fn execute(
             label,
             due_after,
             due_before,
+            include_closed,
+            closed,
         } => {
             let due_range = DueDateRange::parse(
                 due_after.as_deref(),
@@ -197,7 +212,10 @@ pub async fn execute(
                     field: "--list or --board".to_string(),
                 });
             };
-            let cards = due_range.filter(cards);
+            // `--closed` is an explicit filter, independent of the due window.
+            // Apply it first so the two predicates never overlap.
+            let cards = filter_closed(cards, closed);
+            let cards = due_range.filter(cards, include_closed);
             render_collection(&cards, format, full)?;
         }
         crate::app::CardAction::Get { id } => {
@@ -265,10 +283,17 @@ pub async fn execute(
             label,
             due_after,
             due_before,
+            include_closed,
+            closed,
         } => {
-            if title.is_none() && label.is_empty() && due_after.is_none() && due_before.is_none() {
+            if title.is_none()
+                && label.is_empty()
+                && due_after.is_none()
+                && due_before.is_none()
+                && !closed
+            {
                 return Err(PlankaError::MissingRequiredOption {
-                    field: "--title, --label, --due-after, or --due-before".to_string(),
+                    field: "--title, --label, --due-after, --due-before, or --closed".to_string(),
                 });
             }
 
@@ -310,7 +335,10 @@ pub async fn execute(
                     .find_cards(scope, title.as_deref().unwrap_or(""))
                     .await?
             };
-            let cards = due_range.filter(cards);
+            // `--closed` is an explicit filter, independent of the due window.
+            // Apply it first so the two predicates never overlap.
+            let cards = filter_closed(cards, closed);
+            let cards = due_range.filter(cards, include_closed);
             render_collection(&cards, format, full)?;
         }
         crate::app::CardAction::Create {

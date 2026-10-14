@@ -28,6 +28,13 @@ due date](#find-cards-by-title-label-andor-due-date).
 ```bash
 plnk card list --board <boardId> --due-before 2026-04-30
 plnk card list --board <boardId> --due-after 2026-04-01 --due-before 2026-04-30
+plnk card list --board <boardId> --due-before now --include-closed
+```
+
+List closed cards on their own with `--closed`:
+
+```bash
+plnk card list --board <boardId> --closed
 ```
 
 ### Get a card by ID
@@ -75,10 +82,16 @@ plnk card find --project <projectId> --title "auth"
 plnk card find --board <boardId> --due-before 2026-04-30
 plnk card find --board <boardId> --due-after 2026-04-01 --due-before 2026-04-30
 plnk card find --board <boardId> --label "Urgent" --due-before 2026-04-30T12:00:00Z
+
+# Closed cards are excluded from a due query; opt back in
+plnk card find --board <boardId> --due-before now --include-closed
+
+# Closed cards on their own
+plnk card find --board <boardId> --closed
 ```
 
 Notes:
-- At least one of `--title`, `--label`, `--due-after`, or `--due-before` is required.
+- At least one of `--title`, `--label`, `--due-after`, `--due-before`, or `--closed` is required.
 - `--label` is only supported with `--list` or `--board` scopes.
 - Label names are resolved within the owning board using exact > case-insensitive > substring matching.
 - If a label query matches more than one board label, the CLI tells you it matched multiple labels and prints the candidates.
@@ -105,6 +118,28 @@ expression and `--due-before` keeps cards due **strictly before** its expression
 A card due exactly on a bound is excluded. Cards without a due date are excluded
 whenever a due bound is set. A card whose due date cannot be parsed as ISO 8601
 is excluded and reported on stderr.
+
+A due query — any `card list` or `card find` with `--due-after` or `--due-before`
+— also excludes closed cards. A closed card is done, so leaving it in the window
+buries the cards that still need attention. Pass `--include-closed` to keep
+them:
+
+```bash
+plnk card list --board <boardId> --due-before now --include-closed
+```
+
+The exclusion applies only when a due bound is set. A plain
+`plnk card list --board <boardId>` keeps returning closed cards, exactly as
+before. Use `--closed` to see closed cards on their own, with or without a due
+window:
+
+```bash
+plnk card list --board <boardId> --closed
+plnk card find --board <boardId> --closed --due-before now
+```
+
+`--closed` and `--include-closed` contradict each other. Passing both is a
+validation error and exits `2`.
 
 Relative dates resolve to the **start of the day** in local time, so
 `--due-before tomorrow` excludes cards due today as well as tomorrow. `now` is

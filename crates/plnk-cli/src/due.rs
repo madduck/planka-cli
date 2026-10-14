@@ -50,17 +50,23 @@ impl DueDateRange {
     /// Keep only cards whose due date falls strictly inside the range.
     ///
     /// Cards without a due date, or with an unparseable one, never match a
-    /// bounded range. An unbounded range keeps everything.
+    /// bounded range. A bounded range also drops closed cards unless
+    /// `include_closed` is set: asking what is due is a planning question, and
+    /// a closed card is done. An unbounded range keeps everything and ignores
+    /// `include_closed` entirely, so a bare listing is unchanged.
     #[must_use]
-    pub fn filter(&self, mut cards: Vec<Card>) -> Vec<Card> {
+    pub fn filter(&self, mut cards: Vec<Card>, include_closed: bool) -> Vec<Card> {
         if self.after.is_none() && self.before.is_none() {
             return cards;
         }
-        cards.retain(|card| self.matches(card));
+        cards.retain(|card| self.matches(card, include_closed));
         cards
     }
 
-    fn matches(&self, card: &Card) -> bool {
+    fn matches(&self, card: &Card, include_closed: bool) -> bool {
+        if card.is_closed && !include_closed {
+            return false;
+        }
         let Some(raw) = card.due_date.as_deref() else {
             return false;
         };
@@ -341,6 +347,14 @@ mod tests {
     }
 
     fn card(due: Option<&str>) -> Card {
+        card_with_state(due, false)
+    }
+
+    fn closed_card(due: Option<&str>) -> Card {
+        card_with_state(due, true)
+    }
+
+    fn card_with_state(due: Option<&str>, is_closed: bool) -> Card {
         Card {
             id: "card-1".to_string(),
             list_id: "list-1".to_string(),
@@ -350,7 +364,7 @@ mod tests {
             position: 65_536.0,
             due_date: due.map(std::string::ToString::to_string),
             is_due_completed: None,
-            is_closed: false,
+            is_closed,
             is_subscribed: false,
             creator_user_id: None,
             created_at: "2026-01-01T00:00:00Z".to_string(),
@@ -404,7 +418,7 @@ mod tests {
     fn unbounded_range_keeps_null_due_dates() {
         let range =
             DueDateRange::parse(None, "--due-after", None, "--due-before", test_now()).unwrap();
-        let cards = range.filter(vec![card(None), card(Some("2026-04-20T00:00:00Z"))]);
+        let cards = range.filter(vec![card(None), card(Some("2026-04-20T00:00:00Z"))], false);
         assert_eq!(cards.len(), 2);
     }
 
@@ -418,7 +432,7 @@ mod tests {
             test_now(),
         )
         .unwrap();
-        let cards = range.filter(vec![card(None), card(Some("2026-04-20T00:00:00Z"))]);
+        let cards = range.filter(vec![card(None), card(Some("2026-04-20T00:00:00Z"))], false);
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].id, "card-1");
     }
@@ -433,11 +447,14 @@ mod tests {
             test_now(),
         )
         .unwrap();
-        let cards = range.filter(vec![
-            card(Some("2026-04-19T23:59:59Z")),
-            card(Some("2026-04-20T00:00:00Z")),
-            card(Some("2026-04-20T00:00:01Z")),
-        ]);
+        let cards = range.filter(
+            vec![
+                card(Some("2026-04-19T23:59:59Z")),
+                card(Some("2026-04-20T00:00:00Z")),
+                card(Some("2026-04-20T00:00:01Z")),
+            ],
+            false,
+        );
         assert_eq!(
             cards
                 .iter()
@@ -457,11 +474,14 @@ mod tests {
             test_now(),
         )
         .unwrap();
-        let cards = range.filter(vec![
-            card(Some("2026-04-19T23:59:59Z")),
-            card(Some("2026-04-20T00:00:00Z")),
-            card(Some("2026-04-20T00:00:01Z")),
-        ]);
+        let cards = range.filter(
+            vec![
+                card(Some("2026-04-19T23:59:59Z")),
+                card(Some("2026-04-20T00:00:00Z")),
+                card(Some("2026-04-20T00:00:01Z")),
+            ],
+            false,
+        );
         assert_eq!(
             cards
                 .iter()
@@ -481,12 +501,15 @@ mod tests {
             test_now(),
         )
         .unwrap();
-        let cards = range.filter(vec![
-            card(Some("2026-04-20T00:00:00Z")),
-            card(Some("2026-04-21T12:00:00Z")),
-            card(Some("2026-04-22T00:00:00Z")),
-            card(None),
-        ]);
+        let cards = range.filter(
+            vec![
+                card(Some("2026-04-20T00:00:00Z")),
+                card(Some("2026-04-21T12:00:00Z")),
+                card(Some("2026-04-22T00:00:00Z")),
+                card(None),
+            ],
+            false,
+        );
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].due_date.as_deref(), Some("2026-04-21T12:00:00Z"));
     }
@@ -501,12 +524,70 @@ mod tests {
             test_now(),
         )
         .unwrap();
-        let cards = range.filter(vec![
-            card(Some("2026-04-20T00:00:00Z")),
-            card(Some("not-a-timestamp")),
-        ]);
+        let cards = range.filter(
+            vec![
+                card(Some("2026-04-20T00:00:00Z")),
+                card(Some("not-a-timestamp")),
+            ],
+            false,
+        );
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].due_date.as_deref(), Some("2026-04-20T00:00:00Z"));
+    }
+
+    /// A due query is a planning question, so a closed card in the window is
+    /// dropped unless the caller opts in.
+    #[test]
+    fn bounded_range_drops_closed_cards_by_default() {
+        let range = DueDateRange::parse(
+            Some("2026-04-20"),
+            "--due-after",
+            None,
+            "--due-before",
+            test_now(),
+        )
+        .unwrap();
+        let cards = range.filter(
+            vec![
+                card(Some("2026-04-21T00:00:00Z")),
+                closed_card(Some("2026-04-21T00:00:00Z")),
+            ],
+            false,
+        );
+        assert_eq!(cards.len(), 1);
+        assert!(!cards[0].is_closed);
+    }
+
+    #[test]
+    fn include_closed_keeps_closed_cards_in_a_bounded_range() {
+        let range = DueDateRange::parse(
+            Some("2026-04-20"),
+            "--due-after",
+            None,
+            "--due-before",
+            test_now(),
+        )
+        .unwrap();
+        let cards = range.filter(
+            vec![
+                card(Some("2026-04-21T00:00:00Z")),
+                closed_card(Some("2026-04-21T00:00:00Z")),
+            ],
+            true,
+        );
+        assert_eq!(cards.len(), 2);
+    }
+
+    /// The exclusion is tied to a bound being set. Without one, the range is a
+    /// pass-through and `include_closed` must not change the result.
+    #[test]
+    fn unbounded_range_keeps_closed_cards_regardless_of_include_closed() {
+        let range =
+            DueDateRange::parse(None, "--due-after", None, "--due-before", test_now()).unwrap();
+        let cards = range.filter(vec![closed_card(Some("2026-04-21T00:00:00Z"))], false);
+        assert_eq!(cards.len(), 1);
+        let cards = range.filter(vec![closed_card(Some("2026-04-21T00:00:00Z"))], true);
+        assert_eq!(cards.len(), 1);
     }
 
     #[test]

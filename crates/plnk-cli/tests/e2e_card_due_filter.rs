@@ -28,6 +28,19 @@ fn card_json(id: &str, name: &str, due_date: serde_json::Value) -> serde_json::V
     })
 }
 
+/// Like [`card_json`], but with `isClosed` set, so closed-card behaviour can be
+/// exercised without a second fixture builder.
+fn card_json_closed(
+    id: &str,
+    name: &str,
+    due_date: serde_json::Value,
+    is_closed: bool,
+) -> serde_json::Value {
+    let mut card = card_json(id, name, due_date);
+    card["isClosed"] = json!(is_closed);
+    card
+}
+
 #[allow(clippy::needless_pass_by_value)]
 fn board_snapshot(
     cards: serde_json::Value,
@@ -572,6 +585,178 @@ async fn card_find_accepts_now_due_bound() {
         .stdout
         .clone();
     assert_eq!(ids_from(&before), vec!["card-past"]);
+}
+
+/// A due query is a planning question, so a closed card inside the window is
+/// dropped unless the caller passes `--include-closed`.
+#[tokio::test]
+async fn card_find_due_query_excludes_closed_cards_by_default() {
+    let server = MockServer::start().await;
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([
+                card_json_closed(
+                    "card-open",
+                    "Card open",
+                    json!("2026-04-25T12:00:00.000Z"),
+                    false
+                ),
+                card_json_closed(
+                    "card-closed",
+                    "Card closed",
+                    json!("2026-04-25T12:00:00.000Z"),
+                    true
+                ),
+            ]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "card",
+            "find",
+            "--board",
+            "board-1",
+            "--due-before",
+            "2026-04-30",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(ids_from(&output), vec!["card-open"]);
+}
+
+#[tokio::test]
+async fn card_find_due_query_include_closed_keeps_closed_cards() {
+    let server = MockServer::start().await;
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([
+                card_json_closed(
+                    "card-open",
+                    "Card open",
+                    json!("2026-04-25T12:00:00.000Z"),
+                    false
+                ),
+                card_json_closed(
+                    "card-closed",
+                    "Card closed",
+                    json!("2026-04-25T12:00:00.000Z"),
+                    true
+                ),
+            ]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "card",
+            "find",
+            "--board",
+            "board-1",
+            "--due-before",
+            "2026-04-30",
+            "--include-closed",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(ids_from(&output), vec!["card-open", "card-closed"]);
+}
+
+/// The exclusion is tied to a due bound. A bare listing must keep returning
+/// closed cards exactly as before.
+#[tokio::test]
+async fn card_list_without_due_filter_still_returns_closed_cards() {
+    let server = MockServer::start().await;
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([
+                card_json_closed("card-open", "Card open", serde_json::Value::Null, false),
+                card_json_closed("card-closed", "Card closed", serde_json::Value::Null, true),
+            ]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args(["card", "list", "--board", "board-1", "--output", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(ids_from(&output), vec!["card-open", "card-closed"]);
+}
+
+#[tokio::test]
+async fn card_list_closed_keeps_only_closed_cards() {
+    let server = MockServer::start().await;
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([
+                card_json_closed("card-open", "Card open", serde_json::Value::Null, false),
+                card_json_closed("card-closed", "Card closed", serde_json::Value::Null, true),
+            ]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "card", "list", "--board", "board-1", "--closed", "--output", "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(ids_from(&output), vec!["card-closed"]);
+}
+
+/// `--closed` and `--include-closed` contradict each other; clap rejects the
+/// pair before any request is made.
+#[tokio::test]
+async fn closed_and_include_closed_together_exit_2() {
+    let server = MockServer::start().await;
+
+    // clap rejects the pair itself, so the failure is a usage error on stderr
+    // with exit 2, not a JSON envelope on stdout.
+    plnk_with_server(&server.uri())
+        .args([
+            "card",
+            "list",
+            "--board",
+            "board-1",
+            "--closed",
+            "--include-closed",
+        ])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("cannot be used with"));
 }
 
 #[tokio::test]
