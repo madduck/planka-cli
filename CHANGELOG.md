@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parsed is excluded and reported on stderr.
 - `plnk card list` accepts the same `--due-after` / `--due-before` filters,
   sharing their semantics with `card find`.
+- Due-date flags accept **relative dates** in addition to ISO 8601: `today`,
+  `tomorrow`, `yesterday`, `next week`, `next month`, `2 weeks from today`,
+  `in 3 days`, `3 days ago`, `this month`, and bare weekday names. They resolve
+  against the current time in the local timezone (read from `TZ` /
+  `/etc/localtime`, falling back to UTC) and land on the start of the day.
 - Card table and markdown output now show a `Due` column before `Closed`. The
   trimmed JSON projection gains `dueDate` for the same reason, keeping it a
   strict subset of the full card representation.

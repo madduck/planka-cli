@@ -132,6 +132,26 @@ fn machine_help_card_list_includes_label_option_and_examples() {
             .iter()
             .any(|example| example.as_str().unwrap().contains("--due-"))
     );
+    for flag in ["--include-closed", "--closed"] {
+        assert_eq!(
+            opts[flag]["type"], "flag",
+            "card list {flag} should be flag"
+        );
+        assert_eq!(opts[flag]["required"], false);
+    }
+    assert!(
+        opts["--include-closed"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("due query excludes them by default")
+    );
+    assert!(
+        json["examples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|example| example.as_str().unwrap().contains("--include-closed"))
+    );
 }
 
 #[test]
@@ -181,6 +201,13 @@ fn machine_help_card_find_includes_due_options() {
             .iter()
             .any(|example| example.as_str().unwrap().contains("--due-"))
     );
+    for flag in ["--include-closed", "--closed"] {
+        assert_eq!(
+            opts[flag]["type"], "flag",
+            "card find {flag} should be flag"
+        );
+        assert_eq!(opts[flag]["required"], false);
+    }
 }
 
 #[test]
