@@ -195,9 +195,9 @@ Alias: `plnk cards --list <listId>`
 - `find --board` fetches the board snapshot and searches all cards across lists.
 - `find --project` fetches all boards in the project, then all cards in each board.
 - `find` needs at least one of `--title`, `--label`, `--due-after`, or `--due-before`.
-- `--due-after` / `--due-before` take ISO 8601 timestamps or relative dates (`today`, `next week`, `2 weeks from today`) and are strict (`<`, not `≤`). Relative dates resolve to the start of the day in local time. Cards without a due date are excluded whenever a bound is set. Both `card list` and `card find` accept them; on `card list` they filter without changing the `--list` / `--board` scope requirement.
+- `--due-after` / `--due-before` take ISO 8601 timestamps or relative dates (`now`, `today`, `next week`, `2 weeks from today`) and are strict (`<`, not `≤`). Relative dates resolve to the start of the day in local time, except `now`, which keeps the current time of day (`--due-before now` selects overdue cards). Cards without a due date are excluded whenever a bound is set. Both `card list` and `card find` accept them; on `card list` they filter without changing the `--list` / `--board` scope requirement.
 - `--description` accepts literal text, `-` for stdin, `@file.md` for file.
-- `--due-date` accepts ISO 8601 or a relative date (`tomorrow`, `in 2 weeks`) and is normalised to UTC; `--clear-due-date` removes the due date (mutually exclusive).
+- `--due-date` accepts ISO 8601 or a relative date (`now`, `tomorrow`, `in 2 weeks`) and is normalised to UTC; `--clear-due-date` removes the due date (mutually exclusive).
 - `--position top` = position 0.0, `bottom` = max float, or provide a numeric value.
 - `update` requires at least one mutable field.
 

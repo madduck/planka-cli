@@ -513,6 +513,67 @@ async fn card_find_accepts_relative_due_bounds() {
     assert_eq!(ids_from(&output), vec!["card-future"]);
 }
 
+/// `now` goes through the same relative path but keeps the current time of day.
+/// With a far-past and a far-ahead card, `--due-after now` must keep only the
+/// future one and `--due-before now` only the past one, regardless of run time.
+#[tokio::test]
+async fn card_find_accepts_now_due_bound() {
+    let server = MockServer::start().await;
+    let today = time::OffsetDateTime::now_utc().date();
+    let long_ago = today - time::Duration::days(400);
+    let long_ahead = today + time::Duration::days(400);
+
+    let iso = |date: time::Date| format!("{date}T12:00:00.000Z");
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([
+                card_json("card-past", "Card past", json!(iso(long_ago))),
+                card_json("card-future", "Card future", json!(iso(long_ahead))),
+            ]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let after = plnk_with_tz(&server.uri(), "UTC")
+        .args([
+            "card",
+            "find",
+            "--board",
+            "board-1",
+            "--due-after",
+            "now",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(ids_from(&after), vec!["card-future"]);
+
+    let before = plnk_with_tz(&server.uri(), "UTC")
+        .args([
+            "card",
+            "find",
+            "--board",
+            "board-1",
+            "--due-before",
+            "now",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(ids_from(&before), vec!["card-past"]);
+}
+
 #[tokio::test]
 async fn card_find_relative_bounds_combine() {
     let server = MockServer::start().await;
