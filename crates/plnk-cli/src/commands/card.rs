@@ -168,7 +168,19 @@ pub async fn execute(
     full: bool,
 ) -> Result<(), PlankaError> {
     match action {
-        crate::app::CardAction::List { list, board, label } => {
+        crate::app::CardAction::List {
+            list,
+            board,
+            label,
+            due_after,
+            due_before,
+        } => {
+            let due_range = DueDateRange::parse(
+                due_after.as_deref(),
+                "--due-after",
+                due_before.as_deref(),
+                "--due-before",
+            )?;
             let cards = if let Some((board_id, list_id, label_ids)) =
                 resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
             {
@@ -184,6 +196,7 @@ pub async fn execute(
                     field: "--list or --board".to_string(),
                 });
             };
+            let cards = due_range.filter(cards);
             render_collection(&cards, format, full)?;
         }
         crate::app::CardAction::Get { id } => {

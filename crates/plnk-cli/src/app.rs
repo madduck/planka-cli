@@ -141,6 +141,12 @@ pub enum Command {
         /// Board-scoped label ID or name (repeat for AND semantics; use an ID to avoid ambiguity)
         #[arg(long = "label")]
         label: Vec<String>,
+        /// Only include cards due strictly after this ISO 8601 timestamp
+        #[arg(long)]
+        due_after: Option<String>,
+        /// Only include cards due strictly before this ISO 8601 timestamp
+        #[arg(long)]
+        due_before: Option<String>,
     },
     /// Alias for `task list --card <id>`
     #[command(hide = true)]
@@ -471,6 +477,12 @@ pub enum CardAction {
         /// Board-scoped label ID or name (repeat for AND semantics; use an ID to avoid ambiguity)
         #[arg(long = "label")]
         label: Vec<String>,
+        /// Only include cards due strictly after this ISO 8601 timestamp
+        #[arg(long)]
+        due_after: Option<String>,
+        /// Only include cards due strictly before this ISO 8601 timestamp
+        #[arg(long)]
+        due_before: Option<String>,
     },
     /// Get a card by ID
     Get {
