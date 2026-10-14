@@ -597,6 +597,8 @@ async fn main() {
             label,
             due_after,
             due_before,
+            include_closed,
+            closed,
         } => match build_client(
             app.server.as_deref(),
             app.token.as_deref(),
@@ -611,6 +613,8 @@ async fn main() {
                         label,
                         due_after,
                         due_before,
+                        include_closed,
+                        closed,
                     },
                     app.output,
                     app.yes,

@@ -195,6 +195,23 @@ Rules:
 Because relative dates depend on the current time, two runs across a DST change
 can legitimately return different results for the same input.
 
+### Closed cards
+
+A due query — any `card list` or `card find` with `--due-after` or `--due-before`
+— excludes cards with `isClosed: true`. A closed card is done, so it does not
+belong in an answer about what is still due.
+
+The exclusion is tied to a bound being set. Without one, a listing is unchanged
+and keeps returning closed cards.
+
+| Flag | Effect |
+|------|--------|
+| `--include-closed` | Keep closed cards in a due query |
+| `--closed` | Keep only closed cards, with or without a due window |
+
+`--closed` and `--include-closed` contradict each other. Passing both exits `2`
+before any request is made.
+
 ## Global flags
 
 Every subcommand accepts these (via clap's global flags):

@@ -155,6 +155,12 @@ pub enum Command {
         /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'now', 'tomorrow', 'in 3 days')
         #[arg(long)]
         due_before: Option<String>,
+        /// Keep closed cards when a due filter is active (a due query excludes them by default)
+        #[arg(long, conflicts_with = "closed")]
+        include_closed: bool,
+        /// Only include closed cards
+        #[arg(long)]
+        closed: bool,
     },
     /// Alias for `task list --card <id>`
     #[command(hide = true)]
@@ -491,6 +497,12 @@ pub enum CardAction {
         /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'now', 'tomorrow', 'in 3 days')
         #[arg(long)]
         due_before: Option<String>,
+        /// Keep closed cards when a due filter is active (a due query excludes them by default)
+        #[arg(long, conflicts_with = "closed")]
+        include_closed: bool,
+        /// Only include closed cards
+        #[arg(long)]
+        closed: bool,
     },
     /// Get a card by ID
     Get {
@@ -537,6 +549,12 @@ pub enum CardAction {
         /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'now', 'tomorrow', 'in 3 days')
         #[arg(long)]
         due_before: Option<String>,
+        /// Keep closed cards when a due filter is active (a due query excludes them by default)
+        #[arg(long, conflicts_with = "closed")]
+        include_closed: bool,
+        /// Only include closed cards
+        #[arg(long)]
+        closed: bool,
     },
     /// Create a new card
     Create {

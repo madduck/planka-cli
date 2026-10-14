@@ -295,7 +295,7 @@ fn infer_type(name: &str) -> String {
         | "retry_base_delay_ms"
         | "retry_max_delay_ms" => "integer".to_string(),
         "allow_missing" | "no_retry" | "quiet" | "yes" | "full" | "no_color" | "verbose"
-        | "clear_due_date" => "flag".to_string(),
+        | "clear_due_date" | "include_closed" | "closed" => "flag".to_string(),
         _ => "string".to_string(),
     }
 }
@@ -352,6 +352,8 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card list --board 456 --due-after 2026-04-01 --due-before 2026-04-30".into(),
             "plnk card list --board 456 --due-before tomorrow".into(),
             "plnk card list --board 456 --due-after now".into(),
+            "plnk card list --board 456 --due-before now --include-closed".into(),
+            "plnk card list --board 456 --closed".into(),
         ],
         ("card", "get") => vec!["plnk card get 1234".into()],
         ("card", "get-many") => vec![
@@ -371,6 +373,8 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card find --board 456 --due-after 2026-04-01 --due-before 2026-04-30".into(),
             "plnk card find --board 456 --due-before 'next week'".into(),
             "plnk card find --board 456 --due-after now".into(),
+            "plnk card find --board 456 --due-before now --include-closed".into(),
+            "plnk card find --board 456 --closed".into(),
         ],
         ("card", "create") => vec![
             "plnk card create --list 789 --title 'Fix auth'".into(),
