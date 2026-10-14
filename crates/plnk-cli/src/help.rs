@@ -348,6 +348,8 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card list --list 789".into(),
             "plnk card list --board 456 --label urgent".into(),
             "plnk card list --board 456 --label 111".into(),
+            "plnk card list --board 456 --due-before 2026-04-30 --output json".into(),
+            "plnk card list --board 456 --due-after 2026-04-01 --due-before 2026-04-30".into(),
         ],
         ("card", "get") => vec!["plnk card get 1234".into()],
         ("card", "get-many") => vec![

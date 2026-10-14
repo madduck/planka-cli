@@ -21,6 +21,15 @@ plnk card list --board <boardId> --label "Urgent"
 plnk card list --board <boardId> --label "Urgent" --label "Backend"
 ```
 
+Filter by due date with `--due-after` / `--due-before`. The bounds are strict and
+behave exactly as they do on `card find`; see [Find cards by title, label, and/or
+due date](#find-cards-by-title-label-andor-due-date).
+
+```bash
+plnk card list --board <boardId> --due-before 2026-04-30
+plnk card list --board <boardId> --due-after 2026-04-01 --due-before 2026-04-30
+```
+
 ### Get a card by ID
 
 ```bash

@@ -118,6 +118,20 @@ fn machine_help_card_list_includes_label_option_and_examples() {
             .iter()
             .any(|example| example.as_str().unwrap().contains("--label"))
     );
+    for flag in ["--due-after", "--due-before"] {
+        assert_eq!(
+            opts[flag]["type"], "iso8601",
+            "card list {flag} should be iso8601"
+        );
+        assert_eq!(opts[flag]["required"], false);
+    }
+    assert!(
+        json["examples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|example| example.as_str().unwrap().contains("--due-"))
+    );
 }
 
 #[test]

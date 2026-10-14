@@ -410,7 +410,13 @@ async fn main() {
             }
             Err(e) => Err(e),
         },
-        Command::Cards { list, board, label } => match build_client(
+        Command::Cards {
+            list,
+            board,
+            label,
+            due_after,
+            due_before,
+        } => match build_client(
             app.server.as_deref(),
             app.token.as_deref(),
             &transport_policy,
@@ -418,7 +424,13 @@ async fn main() {
             Ok(client) => {
                 commands::card::execute(
                     &client,
-                    app::CardAction::List { list, board, label },
+                    app::CardAction::List {
+                        list,
+                        board,
+                        label,
+                        due_after,
+                        due_before,
+                    },
                     app.output,
                     app.yes,
                     app.full,
