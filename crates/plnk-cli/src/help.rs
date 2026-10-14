@@ -294,9 +294,8 @@ fn infer_type(name: &str) -> String {
         | "retry_attempts"
         | "retry_base_delay_ms"
         | "retry_max_delay_ms" => "integer".to_string(),
-        "allow_missing" | "no_retry" | "quiet" | "yes" | "full" | "no_color" | "verbose" => {
-            "flag".to_string()
-        }
+        "allow_missing" | "no_retry" | "quiet" | "yes" | "full" | "no_color" | "verbose"
+        | "clear_due_date" => "flag".to_string(),
         _ => "string".to_string(),
     }
 }
@@ -376,6 +375,7 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card update 1234 --title 'Fix auth race'".into(),
             "plnk card update 1234 --description @spec.md".into(),
             "plnk card update 1234 --due-date 2026-04-30".into(),
+            "plnk card update 1234 --clear-due-date".into(),
         ],
         ("card", "move") => vec!["plnk card move 1234 --to-list 790 --position top".into()],
         ("card", "archive") => vec!["plnk card archive 1234".into()],

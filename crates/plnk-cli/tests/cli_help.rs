@@ -183,12 +183,21 @@ fn machine_help_card_update_includes_due_date_option() {
     let opts = &json["options"];
     assert_eq!(opts["--due-date"]["type"], "iso8601");
     assert_eq!(opts["--due-date"]["required"], false);
+    assert_eq!(opts["--clear-due-date"]["type"], "flag");
+    assert_eq!(opts["--clear-due-date"]["required"], false);
     assert!(
         json["examples"]
             .as_array()
             .unwrap()
             .iter()
             .any(|example| example.as_str().unwrap().contains("--due-date"))
+    );
+    assert!(
+        json["examples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|example| example.as_str().unwrap().contains("--clear-due-date"))
     );
 }
 

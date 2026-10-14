@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::app::OutputFormat;
 use crate::commands::project::confirm_delete;
-use crate::due::{DueDateRange, normalize_due_date};
+use crate::due::{DueDateRange, parse_due_date_input};
 use crate::input::resolve_text;
 use crate::output::{
     render_collection, render_collection_with_meta, render_item, render_message, render_snapshot,
@@ -327,10 +327,11 @@ pub async fn execute(
             title,
             description,
             due_date,
+            clear_due_date,
         } => {
-            if title.is_none() && description.is_none() && due_date.is_none() {
+            if title.is_none() && description.is_none() && due_date.is_none() && !clear_due_date {
                 return Err(PlankaError::InvalidOptionValue {
-                    field: "--title / --description / --due-date".to_string(),
+                    field: "--title / --description / --due-date / --clear-due-date".to_string(),
                     message: "At least one field must be provided for update".to_string(),
                 });
             }
@@ -338,10 +339,7 @@ pub async fn execute(
                 Some(raw) => Some(resolve_text(&raw)?),
                 None => None,
             };
-            let due_date = match due_date {
-                Some(raw) => Some(normalize_due_date(&raw, "--due-date")?),
-                None => None,
-            };
+            let due_date = parse_due_date_input(due_date.as_deref(), clear_due_date, "--due-date")?;
             let params = UpdateCard {
                 name: title,
                 description: desc,
