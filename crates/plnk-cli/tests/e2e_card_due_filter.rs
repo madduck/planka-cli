@@ -453,3 +453,182 @@ async fn card_list_invalid_due_timestamp_exits_2() {
     assert_eq!(json["error"]["type"], "InvalidOptionValue");
     assert_eq!(json["error"]["field"], "--due-before");
 }
+
+/// Relative bounds are resolved against the process's local time. Pin `TZ` so
+/// the fixture and the parser agree regardless of the machine running the test.
+fn plnk_with_tz(server_uri: &str, tz: &str) -> Command {
+    let mut cmd = plnk_with_server(server_uri);
+    cmd.env("TZ", tz);
+    cmd
+}
+
+/// A card due far enough in the past that `--due-after today` must exclude it,
+/// and one due far enough ahead that it must be included. The dates are derived
+/// from the real clock on purpose: the point is only to prove that relative
+/// words reach the filter, not to test the calendar arithmetic, which the unit
+/// tests cover against a frozen instant.
+#[tokio::test]
+async fn card_find_accepts_relative_due_bounds() {
+    let server = MockServer::start().await;
+    let today = time::OffsetDateTime::now_utc().date();
+    let long_ago = today - time::Duration::days(400);
+    let long_ahead = today + time::Duration::days(400);
+
+    let iso = |date: time::Date| format!("{date}T12:00:00.000Z");
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([
+                card_json("card-past", "Card past", json!(iso(long_ago))),
+                card_json("card-future", "Card future", json!(iso(long_ahead))),
+                card_json(
+                    "card-null",
+                    "Card without due date",
+                    serde_json::Value::Null
+                )
+            ]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let output = plnk_with_tz(&server.uri(), "UTC")
+        .args([
+            "card",
+            "find",
+            "--board",
+            "board-1",
+            "--due-after",
+            "today",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(ids_from(&output), vec!["card-future"]);
+}
+
+#[tokio::test]
+async fn card_find_relative_bounds_combine() {
+    let server = MockServer::start().await;
+    let today = time::OffsetDateTime::now_utc().date();
+    let soon = today + time::Duration::days(3);
+    let long_ahead = today + time::Duration::days(400);
+
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([
+                card_json(
+                    "card-soon",
+                    "Card soon",
+                    json!(format!("{soon}T12:00:00.000Z"))
+                ),
+                card_json(
+                    "card-far",
+                    "Card far",
+                    json!(format!("{long_ahead}T12:00:00.000Z"))
+                )
+            ]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let output = plnk_with_tz(&server.uri(), "UTC")
+        .args([
+            "card",
+            "find",
+            "--board",
+            "board-1",
+            "--due-after",
+            "today",
+            "--due-before",
+            "next month",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(ids_from(&output), vec!["card-soon"]);
+}
+
+#[tokio::test]
+async fn card_list_accepts_relative_due_bounds() {
+    let server = MockServer::start().await;
+    let today = time::OffsetDateTime::now_utc().date();
+    let long_ago = today - time::Duration::days(400);
+
+    mount_board(
+        &server,
+        board_snapshot(
+            json!([card_json(
+                "card-past",
+                "Card past",
+                json!(format!("{long_ago}T12:00:00.000Z"))
+            )]),
+            json!([]),
+            json!([]),
+        ),
+    )
+    .await;
+
+    let output = plnk_with_tz(&server.uri(), "UTC")
+        .args([
+            "card",
+            "list",
+            "--board",
+            "board-1",
+            "--due-before",
+            "yesterday",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(ids_from(&output), vec!["card-past"]);
+}
+
+#[tokio::test]
+async fn relative_due_bound_error_mentions_the_grammar() {
+    let server = MockServer::start().await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "card",
+            "find",
+            "--board",
+            "board-1",
+            "--due-before",
+            "next friday",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .failure()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["error"]["type"], "InvalidOptionValue");
+    assert_eq!(json["error"]["field"], "--due-before");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("relative date"), "got: {message}");
+    assert!(message.contains("ISO 8601"), "got: {message}");
+}

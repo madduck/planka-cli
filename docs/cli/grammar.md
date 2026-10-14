@@ -142,7 +142,9 @@ plnk card update <cardId> --description @spec.md
 ## Timestamps
 
 Flags that take a timestamp, such as `card find --due-after`, `--due-before`,
-and `card update --due-date`, accept ISO 8601:
+and `card update --due-date`, accept ISO 8601 and a set of relative forms.
+
+### ISO 8601
 
 | Form | Meaning |
 |------|---------|
@@ -155,6 +157,39 @@ and `card update --due-date`, accept ISO 8601:
 
 A timestamp without an offset is treated as UTC. A malformed timestamp is a
 validation error and exits `2`.
+
+### Relative dates
+
+Relative forms resolve against the current time in your **local** timezone, which
+`plnk` reads from the environment (`TZ` or `/etc/localtime`). When the offset
+cannot be determined, `plnk` falls back to UTC.
+
+| Form | Meaning |
+|------|---------|
+| `today`, `tomorrow`, `yesterday` | That calendar day |
+| `in 3 days`, `in 2 weeks`, `in 1 month` | Calendar arithmetic forward |
+| `2 weeks from today` | Same as `in 2 weeks` |
+| `3 days ago`, `2 months ago` | Calendar arithmetic into the past |
+| `next week`, `next month`, `next year` | One calendar unit forward |
+| `last week`, `last month`, `last year` | One calendar unit back |
+| `this week`, `this month`, `this year` | Start of the current unit |
+| `monday` .. `sunday` | Next occurrence of that weekday |
+
+Rules:
+
+- Every relative form resolves to the **start of the day** (00:00:00) in your
+  local timezone. `--due-before tomorrow` therefore excludes cards due today as
+  well as tomorrow, because the bounds are strict.
+- Weekday names always mean the *next* occurrence. `monday` on a Monday means the
+  Monday a week later, never today.
+- Month arithmetic clamps to the end of the target month: `next month` from 31
+  January is 28 or 29 February.
+- Multi-word forms need quoting: `--due-before '2 weeks from today'`.
+- Unrecognised values exit `2`. The error names the flag and repeats both
+  grammars.
+
+Because relative dates depend on the current time, two runs across a DST change
+can legitimately return different results for the same input.
 
 ## Global flags
 

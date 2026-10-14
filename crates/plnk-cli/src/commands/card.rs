@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::app::OutputFormat;
 use crate::commands::project::confirm_delete;
-use crate::due::{DueDateRange, parse_due_date_input};
+use crate::due::{DueDateRange, parse_due_date_input, reference_now};
 use crate::input::resolve_text;
 use crate::names::{NameIndex, NameSource};
 use crate::output::{
@@ -183,6 +183,7 @@ pub async fn execute(
                 "--due-after",
                 due_before.as_deref(),
                 "--due-before",
+                reference_now(),
             )?;
             let board = names.resolve_optional_board(client, board, None).await?;
             let list = names
@@ -284,6 +285,7 @@ pub async fn execute(
                 "--due-after",
                 due_before.as_deref(),
                 "--due-before",
+                reference_now(),
             )?;
 
             let project = names.resolve_optional_project(client, project).await?;
@@ -369,7 +371,12 @@ pub async fn execute(
                 Some(raw) => Some(resolve_text(&raw)?),
                 None => None,
             };
-            let due_date = parse_due_date_input(due_date.as_deref(), clear_due_date, "--due-date")?;
+            let due_date = parse_due_date_input(
+                due_date.as_deref(),
+                clear_due_date,
+                "--due-date",
+                reference_now(),
+            )?;
             let params = UpdateCard {
                 name: title,
                 description: desc,

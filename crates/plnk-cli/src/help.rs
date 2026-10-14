@@ -350,6 +350,7 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card list --board 456 --label 111".into(),
             "plnk card list --board 456 --due-before 2026-04-30 --output json".into(),
             "plnk card list --board 456 --due-after 2026-04-01 --due-before 2026-04-30".into(),
+            "plnk card list --board 456 --due-before tomorrow".into(),
         ],
         ("card", "get") => vec!["plnk card get 1234".into()],
         ("card", "get-many") => vec![
@@ -367,6 +368,7 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card find --project 123 --title 'Fix auth'".into(),
             "plnk card find --board 456 --due-before 2026-04-30 --output json".into(),
             "plnk card find --board 456 --due-after 2026-04-01 --due-before 2026-04-30".into(),
+            "plnk card find --board 456 --due-before 'next week'".into(),
         ],
         ("card", "create") => vec![
             "plnk card create --list 789 --title 'Fix auth'".into(),
@@ -377,6 +379,7 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card update 1234 --title 'Fix auth race'".into(),
             "plnk card update 1234 --description @spec.md".into(),
             "plnk card update 1234 --due-date 2026-04-30".into(),
+            "plnk card update 1234 --due-date 'in 2 weeks'".into(),
             "plnk card update 1234 --clear-due-date".into(),
         ],
         ("card", "move") => vec!["plnk card move 1234 --to-list 790 --position top".into()],
