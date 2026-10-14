@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::app::OutputFormat;
 use crate::commands::project::confirm_delete;
+use crate::due::DueDateRange;
 use crate::input::resolve_text;
 use crate::output::{
     render_collection, render_collection_with_meta, render_item, render_message, render_snapshot,
@@ -248,12 +249,21 @@ pub async fn execute(
             project,
             title,
             label,
+            due_after,
+            due_before,
         } => {
-            if title.is_none() && label.is_empty() {
+            if title.is_none() && label.is_empty() && due_after.is_none() && due_before.is_none() {
                 return Err(PlankaError::MissingRequiredOption {
-                    field: "--title or --label".to_string(),
+                    field: "--title, --label, --due-after, or --due-before".to_string(),
                 });
             }
+
+            let due_range = DueDateRange::parse(
+                due_after.as_deref(),
+                "--due-after",
+                due_before.as_deref(),
+                "--due-before",
+            )?;
 
             let cards = if let Some((board_id, list_id, label_ids)) =
                 resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
@@ -285,6 +295,7 @@ pub async fn execute(
                     .find_cards(scope, title.as_deref().unwrap_or(""))
                     .await?
             };
+            let cards = due_range.filter(cards);
             render_collection(&cards, format, full)?;
         }
         crate::app::CardAction::Create {

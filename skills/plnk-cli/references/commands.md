@@ -22,6 +22,7 @@ This file is optimized for agent lookup. When using it from Pi:
 | find a list by name | `plnk list find --board <boardId> --name <name>` |
 | list cards in a list | `plnk card list --list <listId>` |
 | find cards by title | `plnk card find --list <listId> --title <title>` or broader board/project scopes |
+| find cards due in a window | `plnk card find --board <boardId> --due-after <iso8601> --due-before <iso8601>` |
 | read one card with nested state | `plnk card snapshot <cardId> --output json` |
 | create a card | `plnk card create --list <listId> --title <title>` |
 | update a card title/description | `plnk card update <cardId> ...` |
@@ -176,6 +177,8 @@ plnk card snapshot <cardId>                  # JSON only — full wire response
 plnk card find --list <listId> --title <title>
 plnk card find --board <boardId> --title <title>
 plnk card find --project <projectId> --title <title>
+plnk card find --board <boardId> --due-before <iso8601>
+plnk card find --board <boardId> --due-after <iso8601> --due-before <iso8601>
 plnk card create --list <listId> --title <title> [--description <text>] [--position top|bottom|<int>]
 plnk card update <cardId> [--title <title>] [--description <text>]
 plnk card move <cardId> --to-list <listId> [--to-board <boardId>] [--position top|bottom|<int>]
@@ -189,6 +192,8 @@ Alias: `plnk cards --list <listId>`
 - `find` requires exactly one scope flag (`--list`, `--board`, or `--project`).
 - `find --board` fetches the board snapshot and searches all cards across lists.
 - `find --project` fetches all boards in the project, then all cards in each board.
+- `find` needs at least one of `--title`, `--label`, `--due-after`, or `--due-before`.
+- `--due-after` / `--due-before` take ISO 8601 timestamps and are strict (`<`, not `≤`). A bound without an offset is UTC. Cards without a due date are excluded whenever a bound is set.
 - `--description` accepts literal text, `-` for stdin, `@file.md` for file.
 - `--position top` = position 0.0, `bottom` = max float, or provide a numeric value.
 - `update` requires at least one mutable field.
