@@ -141,10 +141,10 @@ pub enum Command {
         /// Board-scoped label ID or name (repeat for AND semantics; use an ID to avoid ambiguity)
         #[arg(long = "label")]
         label: Vec<String>,
-        /// Only include cards due strictly after this date (ISO 8601 or relative, e.g. 'today', 'next week')
+        /// Only include cards due strictly after this date (ISO 8601 or relative, e.g. 'now', 'today', 'next week')
         #[arg(long)]
         due_after: Option<String>,
-        /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'tomorrow', 'in 3 days')
+        /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'now', 'tomorrow', 'in 3 days')
         #[arg(long)]
         due_before: Option<String>,
     },
@@ -477,10 +477,10 @@ pub enum CardAction {
         /// Board-scoped label ID or name (repeat for AND semantics; use an ID to avoid ambiguity)
         #[arg(long = "label")]
         label: Vec<String>,
-        /// Only include cards due strictly after this date (ISO 8601 or relative, e.g. 'today', 'next week')
+        /// Only include cards due strictly after this date (ISO 8601 or relative, e.g. 'now', 'today', 'next week')
         #[arg(long)]
         due_after: Option<String>,
-        /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'tomorrow', 'in 3 days')
+        /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'now', 'tomorrow', 'in 3 days')
         #[arg(long)]
         due_before: Option<String>,
     },
@@ -523,10 +523,10 @@ pub enum CardAction {
         /// Board-scoped label ID or name (repeat for AND semantics; use an ID to avoid ambiguity)
         #[arg(long = "label")]
         label: Vec<String>,
-        /// Only include cards due strictly after this date (ISO 8601 or relative, e.g. 'today', 'next week')
+        /// Only include cards due strictly after this date (ISO 8601 or relative, e.g. 'now', 'today', 'next week')
         #[arg(long)]
         due_after: Option<String>,
-        /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'tomorrow', 'in 3 days')
+        /// Only include cards due strictly before this date (ISO 8601 or relative, e.g. 'now', 'tomorrow', 'in 3 days')
         #[arg(long)]
         due_before: Option<String>,
     },
@@ -555,8 +555,8 @@ pub enum CardAction {
         /// New description (literal, "-" for stdin, "@file" for file)
         #[arg(long)]
         description: Option<String>,
-        /// New due date (ISO 8601 or relative, e.g. 'tomorrow', 'in 2 weeks');
-        /// relative dates resolve to the start of the day in local time
+        /// New due date (ISO 8601 or relative, e.g. 'now', 'tomorrow', 'in 2 weeks');
+        /// relative dates resolve to the start of the day in local time, except 'now', which keeps the current time
         #[arg(long)]
         due_date: Option<String>,
         /// Remove the card's due date
