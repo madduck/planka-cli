@@ -197,6 +197,7 @@ Mutate a card:
 ```bash
 plnk card create --list <listId> --title "Fix auth" --output json
 plnk card update <cardId> --description @spec.md --output json
+plnk card update <cardId> --due-date 2026-04-30 --output json
 plnk card move <cardId> --to-list <listId> --position top --output json
 ```
 

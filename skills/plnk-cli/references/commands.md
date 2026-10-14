@@ -180,7 +180,7 @@ plnk card find --project <projectId> --title <title>
 plnk card find --board <boardId> --due-before <iso8601>
 plnk card find --board <boardId> --due-after <iso8601> --due-before <iso8601>
 plnk card create --list <listId> --title <title> [--description <text>] [--position top|bottom|<int>]
-plnk card update <cardId> [--title <title>] [--description <text>]
+plnk card update <cardId> [--title <title>] [--description <text>] [--due-date <iso8601>]
 plnk card move <cardId> --to-list <listId> [--to-board <boardId>] [--position top|bottom|<int>]
 plnk card archive <cardId>
 plnk card unarchive <cardId>
@@ -195,6 +195,7 @@ Alias: `plnk cards --list <listId>`
 - `find` needs at least one of `--title`, `--label`, `--due-after`, or `--due-before`.
 - `--due-after` / `--due-before` take ISO 8601 timestamps and are strict (`<`, not `≤`). A bound without an offset is UTC. Cards without a due date are excluded whenever a bound is set.
 - `--description` accepts literal text, `-` for stdin, `@file.md` for file.
+- `--due-date` accepts ISO 8601 and is normalised to UTC; there is no flag to clear a due date yet.
 - `--position top` = position 0.0, `bottom` = max float, or provide a numeric value.
 - `update` requires at least one mutable field.
 

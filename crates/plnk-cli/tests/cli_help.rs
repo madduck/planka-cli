@@ -170,6 +170,29 @@ fn machine_help_card_find_includes_due_options() {
 }
 
 #[test]
+fn machine_help_card_update_includes_due_date_option() {
+    let output = plnk()
+        .args(["card", "update", "--help", "--output", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let opts = &json["options"];
+    assert_eq!(opts["--due-date"]["type"], "iso8601");
+    assert_eq!(opts["--due-date"]["required"], false);
+    assert!(
+        json["examples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|example| example.as_str().unwrap().contains("--due-date"))
+    );
+}
+
+#[test]
 fn machine_help_task_complete() {
     let output = plnk()
         .args(["task", "complete", "--help", "--output", "json"])

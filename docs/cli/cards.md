@@ -121,12 +121,18 @@ plnk card create --list 789 --title "Low priority" --position bottom
 plnk card update <cardId> --title "Fix auth race condition"
 plnk card update <cardId> --description "Updated details"
 plnk card update <cardId> --description @updated-spec.md
+plnk card update <cardId> --due-date 2026-04-30
+plnk card update <cardId> --due-date 2026-04-30T12:00:00Z
 
 # Pipe from clipboard (macOS)
 pbpaste | plnk card update <cardId> --description -
 ```
 
 At least one field must be provided.
+
+`--due-date` accepts the same ISO 8601 timestamps as `card find` and is
+normalised to UTC before it is sent. There is currently no flag to clear a due
+date.
 
 ### Move a card to a different list
 
