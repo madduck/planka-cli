@@ -370,9 +370,15 @@ fn label_roundtrip() {
 fn card_trimmed_columns_match_wire_format() {
     let columns = Card::trimmed_columns();
     let fields: Vec<&str> = columns.iter().map(|(f, _)| *f).collect();
-    assert_eq!(fields, vec!["id", "name", "listId", "position", "isClosed"]);
+    assert_eq!(
+        fields,
+        vec!["id", "name", "listId", "position", "dueDate", "isClosed"]
+    );
     let labels: Vec<&str> = columns.iter().map(|(_, l)| *l).collect();
-    assert_eq!(labels, vec!["ID", "Name", "List", "Position", "Closed"]);
+    assert_eq!(
+        labels,
+        vec!["ID", "Name", "List", "Position", "Due", "Closed"]
+    );
 }
 
 #[test]
