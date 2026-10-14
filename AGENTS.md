@@ -82,6 +82,9 @@ Real-world wire format differences worth knowing when contributing:
 - Board creation requires `"type": "kanban"`.
 - Position values are powers of 2 starting at `65536`.
 - `GET /api/boards/{id}` returns a nested `included` object with lists, cards, tasks, labels, memberships, and users.
+- **There is no server-side filter by card due date.** `card find --due-after` / `--due-before`
+  filter client-side over the fetched snapshot, comparing the `dueDate` ISO 8601 string as a UTC
+  instant (strict `<`, nulls excluded when bounded). Do not invent a query parameter for it.
 
 ### Custom fields
 

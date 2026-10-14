@@ -45,7 +45,7 @@ Notes:
 - `--allow-missing` downgrades per-card `404` misses into metadata, but auth/server/transport failures still fail the command.
 - JSON `meta` includes `requestedCount`, `foundCount`, `missingCount`, `missingIds`, `concurrency`, and `allowMissing`.
 
-### Find cards by title and/or label
+### Find cards by title, label, and/or due date
 
 Must be scoped to a list, board, or project. Title matching uses three-tier matching: exact > case-insensitive > substring.
 
@@ -61,15 +61,29 @@ plnk card find --board <boardId> --label "Urgent" --label "Backend" --title "Fix
 
 # Search within a project (searches all boards and lists)
 plnk card find --project <projectId> --title "auth"
+
+# Filter by due date
+plnk card find --board <boardId> --due-before 2026-04-30
+plnk card find --board <boardId> --due-after 2026-04-01 --due-before 2026-04-30
+plnk card find --board <boardId> --label "Urgent" --due-before 2026-04-30T12:00:00Z
 ```
 
 Notes:
-- `--title` or `--label` is required.
+- At least one of `--title`, `--label`, `--due-after`, or `--due-before` is required.
 - `--label` is only supported with `--list` or `--board` scopes.
 - Label names are resolved within the owning board using exact > case-insensitive > substring matching.
 - If a label query matches more than one board label, the CLI tells you it matched multiple labels and prints the candidates.
 - If no board label matches, the CLI tells you no label matched in the current board scope.
 - If a name is ambiguous, use the label ID instead (`plnk label list --board <boardId>`).
+
+Due-date bounds accept ISO 8601 timestamps: `YYYY-MM-DD` (midnight UTC) or
+`YYYY-MM-DDThh:mm[:ss[.fff]]` with an optional `Z` or `±hh:mm` offset. A timestamp
+without an offset is treated as UTC.
+
+The bounds are strict: `--due-after` keeps cards due **strictly after** its
+timestamp and `--due-before` keeps cards due **strictly before** its timestamp. A
+card due exactly on a bound is excluded. Cards without a due date are excluded
+whenever a due bound is set.
 
 Always returns a collection. Multiple results are expected, not an error.
 

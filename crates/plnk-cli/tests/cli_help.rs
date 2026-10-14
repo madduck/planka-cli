@@ -144,6 +144,32 @@ fn machine_help_card_find_includes_label_option_and_examples() {
 }
 
 #[test]
+fn machine_help_card_find_includes_due_options() {
+    let output = plnk()
+        .args(["card", "find", "--help", "--output", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let opts = &json["options"];
+    for flag in ["--due-after", "--due-before"] {
+        assert_eq!(opts[flag]["type"], "iso8601", "{flag} should be iso8601");
+        assert_eq!(opts[flag]["required"], false);
+        assert!(opts[flag]["description"].is_string());
+    }
+    assert!(
+        json["examples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|example| example.as_str().unwrap().contains("--due-"))
+    );
+}
+
+#[test]
 fn machine_help_task_complete() {
     let output = plnk()
         .args(["task", "complete", "--help", "--output", "json"])

@@ -286,6 +286,7 @@ fn infer_type(name: &str) -> String {
         "position" => "enum(top|bottom|int)".to_string(),
         "role" => "enum(admin|editor|viewer)".to_string(),
         "file" | "out" => "path".to_string(),
+        "due_after" | "due_before" => "iso8601".to_string(),
         "concurrency"
         | "http_max_in_flight"
         | "http_rate_limit"
@@ -363,6 +364,8 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card find --board 456 --label urgent".into(),
             "plnk card find --board 456 --label 111 --title 'Fix auth'".into(),
             "plnk card find --project 123 --title 'Fix auth'".into(),
+            "plnk card find --board 456 --due-before 2026-04-30 --output json".into(),
+            "plnk card find --board 456 --due-after 2026-04-01 --due-before 2026-04-30".into(),
         ],
         ("card", "create") => vec![
             "plnk card create --list 789 --title 'Fix auth'".into(),

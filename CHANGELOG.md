@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `plnk card find` accepts `--due-after <iso8601>` and `--due-before <iso8601>` to
+  filter cards by due date. The bounds are strict (`after < due < before`, `<`
+  rather than `≤`) and combine with `--title` and `--label`. A due-only `find`
+  (no title or label) is allowed. Cards without a due date are excluded whenever
+  a bound is set. Timestamps accept `YYYY-MM-DD` (midnight UTC) or RFC 3339
+  date-times; a missing offset means UTC. There is no server-side filter, so the
+  predicate runs over the fetched snapshot.
+
 ## [0.3.0] - 2026-08-10
 
 ### Added
