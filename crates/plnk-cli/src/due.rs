@@ -7,7 +7,7 @@
 //! fractional seconds, and non-UTC offsets.
 
 use plnk_core::error::PlankaError;
-use plnk_core::models::Card;
+use plnk_core::models::{Card, DueDateUpdate};
 use time::OffsetDateTime;
 use time::UtcOffset;
 use time::format_description::well_known::Rfc3339;
@@ -107,19 +107,32 @@ pub fn parse_iso8601_utc(raw: &str) -> Result<OffsetDateTime, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Parse a due-date input and normalise it to RFC 3339 in UTC.
+/// Parse a `card update` due-date input into an update directive.
 ///
-/// Used by `card update --due-date` so the value sent to Planka is
-/// deterministic regardless of the offset the caller supplied.
-pub fn normalize_due_date(raw: &str, field: &str) -> Result<String, PlankaError> {
+/// `clear` wins over `raw`; clap rejects passing both. Returns `Unchanged`
+/// when neither was given, `Clear` for `--clear-due-date`, and `Set` with an
+/// RFC 3339 UTC timestamp otherwise. The value is normalised to UTC so the
+/// request is deterministic regardless of the offset supplied.
+pub fn parse_due_date_input(
+    raw: Option<&str>,
+    clear: bool,
+    field: &str,
+) -> Result<DueDateUpdate, PlankaError> {
+    if clear {
+        return Ok(DueDateUpdate::Clear);
+    }
+    let Some(raw) = raw else {
+        return Ok(DueDateUpdate::Unchanged);
+    };
     let parsed = parse_bound(raw, field)?;
-    parsed
+    let formatted = parsed
         .to_offset(UtcOffset::UTC)
         .format(&Rfc3339)
         .map_err(|error| PlankaError::InvalidOptionValue {
             field: field.to_string(),
             message: error.to_string(),
-        })
+        })?;
+    Ok(DueDateUpdate::Set(formatted))
 }
 
 #[cfg(test)]
@@ -280,20 +293,53 @@ mod tests {
     }
 
     #[test]
-    fn normalize_due_date_uses_utc() {
+    fn parse_due_date_input_uses_utc() {
         assert_eq!(
-            normalize_due_date("2026-04-20", "--due-date").unwrap(),
-            "2026-04-20T00:00:00Z"
+            parse_due_date_input(Some("2026-04-20"), false, "--due-date").unwrap(),
+            DueDateUpdate::Set("2026-04-20T00:00:00Z".to_string())
         );
         assert_eq!(
-            normalize_due_date("2026-04-20T02:30:00+02:00", "--due-date").unwrap(),
-            "2026-04-20T00:30:00Z"
+            parse_due_date_input(Some("2026-04-20T02:30:00+02:00"), false, "--due-date").unwrap(),
+            DueDateUpdate::Set("2026-04-20T00:30:00Z".to_string())
         );
     }
 
     #[test]
-    fn normalize_due_date_rejects_invalid() {
-        let error = normalize_due_date("nope", "--due-date").unwrap_err();
+    fn parse_due_date_input_clear_flag_clears() {
+        assert_eq!(
+            parse_due_date_input(None, true, "--due-date").unwrap(),
+            DueDateUpdate::Clear
+        );
+    }
+
+    /// `--clear-due-date` takes precedence over a stray value; clap rejects
+    /// passing both, so this only guards the helper's own contract.
+    #[test]
+    fn parse_due_date_input_clear_wins_over_value() {
+        assert_eq!(
+            parse_due_date_input(Some("2026-04-20"), true, "--due-date").unwrap(),
+            DueDateUpdate::Clear
+        );
+    }
+
+    #[test]
+    fn parse_due_date_input_absent_is_unchanged() {
+        assert_eq!(
+            parse_due_date_input(None, false, "--due-date").unwrap(),
+            DueDateUpdate::Unchanged
+        );
+    }
+
+    /// A bare `-` is not a clear sentinel any more — it is an invalid date.
+    #[test]
+    fn parse_due_date_input_dash_is_not_a_sentinel() {
+        let error = parse_due_date_input(Some("-"), false, "--due-date").unwrap_err();
+        assert_eq!(error.error_type(), "InvalidOptionValue");
+    }
+
+    #[test]
+    fn parse_due_date_input_rejects_invalid() {
+        let error = parse_due_date_input(Some("nope"), false, "--due-date").unwrap_err();
         assert_eq!(error.error_type(), "InvalidOptionValue");
         assert!(error.to_string().contains("--due-date"));
     }

@@ -123,6 +123,7 @@ plnk card update <cardId> --description "Updated details"
 plnk card update <cardId> --description @updated-spec.md
 plnk card update <cardId> --due-date 2026-04-30
 plnk card update <cardId> --due-date 2026-04-30T12:00:00Z
+plnk card update <cardId> --clear-due-date
 
 # Pipe from clipboard (macOS)
 pbpaste | plnk card update <cardId> --description -
@@ -131,8 +132,11 @@ pbpaste | plnk card update <cardId> --description -
 At least one field must be provided.
 
 `--due-date` accepts the same ISO 8601 timestamps as `card find` and is
-normalised to UTC before it is sent. There is currently no flag to clear a due
-date.
+normalised to UTC before it is sent. Omitting the flag leaves the stored due date
+alone.
+
+Pass `--clear-due-date` to remove the due date. Planka receives an explicit
+`null`. `--due-date` and `--clear-due-date` are mutually exclusive.
 
 ### Move a card to a different list
 
