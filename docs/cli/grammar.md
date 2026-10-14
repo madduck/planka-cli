@@ -118,8 +118,8 @@ plnk card update <cardId> --description @spec.md
 
 ## Timestamps
 
-Flags that take a timestamp, such as `card find --due-after` and `--due-before`,
-accept ISO 8601:
+Flags that take a timestamp, such as `card find --due-after`, `--due-before`,
+and `card update --due-date`, accept ISO 8601:
 
 | Form | Meaning |
 |------|---------|

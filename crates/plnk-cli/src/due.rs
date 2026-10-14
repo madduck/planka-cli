@@ -9,6 +9,7 @@
 use plnk_core::error::PlankaError;
 use plnk_core::models::Card;
 use time::OffsetDateTime;
+use time::UtcOffset;
 use time::format_description::well_known::Rfc3339;
 
 /// A strictly-open due-date interval: `after < due < before`.
@@ -104,6 +105,21 @@ pub fn parse_iso8601_utc(raw: &str) -> Result<OffsetDateTime, String> {
     OffsetDateTime::parse(&candidate, &Rfc3339)
         .or_else(|_| OffsetDateTime::parse(&format!("{candidate}Z"), &Rfc3339))
         .map_err(|error| error.to_string())
+}
+
+/// Parse a due-date input and normalise it to RFC 3339 in UTC.
+///
+/// Used by `card update --due-date` so the value sent to Planka is
+/// deterministic regardless of the offset the caller supplied.
+pub fn normalize_due_date(raw: &str, field: &str) -> Result<String, PlankaError> {
+    let parsed = parse_bound(raw, field)?;
+    parsed
+        .to_offset(UtcOffset::UTC)
+        .format(&Rfc3339)
+        .map_err(|error| PlankaError::InvalidOptionValue {
+            field: field.to_string(),
+            message: error.to_string(),
+        })
 }
 
 #[cfg(test)]
@@ -261,6 +277,25 @@ mod tests {
         ]);
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].due_date.as_deref(), Some("2026-04-20T00:00:00Z"));
+    }
+
+    #[test]
+    fn normalize_due_date_uses_utc() {
+        assert_eq!(
+            normalize_due_date("2026-04-20", "--due-date").unwrap(),
+            "2026-04-20T00:00:00Z"
+        );
+        assert_eq!(
+            normalize_due_date("2026-04-20T02:30:00+02:00", "--due-date").unwrap(),
+            "2026-04-20T00:30:00Z"
+        );
+    }
+
+    #[test]
+    fn normalize_due_date_rejects_invalid() {
+        let error = normalize_due_date("nope", "--due-date").unwrap_err();
+        assert_eq!(error.error_type(), "InvalidOptionValue");
+        assert!(error.to_string().contains("--due-date"));
     }
 
     #[test]
