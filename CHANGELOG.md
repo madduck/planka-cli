@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   date-times; a missing offset means UTC. There is no server-side filter, so the
   predicate runs over the fetched snapshot. A card whose `dueDate` cannot be
   parsed is excluded and reported on stderr.
+- Card table and markdown output now show a `Due` column before `Closed`. The
+  trimmed JSON projection gains `dueDate` for the same reason, keeping it a
+  strict subset of the full card representation.
 
 ## [0.3.0] - 2026-08-10
 
