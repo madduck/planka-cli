@@ -171,7 +171,19 @@ pub async fn execute(
     names: &mut NameIndex,
 ) -> Result<(), PlankaError> {
     match action {
-        crate::app::CardAction::List { list, board, label } => {
+        crate::app::CardAction::List {
+            list,
+            board,
+            label,
+            due_after,
+            due_before,
+        } => {
+            let due_range = DueDateRange::parse(
+                due_after.as_deref(),
+                "--due-after",
+                due_before.as_deref(),
+                "--due-before",
+            )?;
             let board = names.resolve_optional_board(client, board, None).await?;
             let list = names
                 .resolve_optional_list(client, list, board.as_deref(), None)
@@ -191,6 +203,7 @@ pub async fn execute(
                     field: "--list or --board".to_string(),
                 });
             };
+            let cards = due_range.filter(cards);
             render_collection_named(client, &cards, format, full, names).await?;
         }
         crate::app::CardAction::Get { id } => {

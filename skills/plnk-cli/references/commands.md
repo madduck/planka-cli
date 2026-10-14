@@ -24,7 +24,7 @@ This file is optimized for agent lookup. When using it from Pi:
 | find a list by name | `plnk list find --board <boardId> --name <name>` |
 | list cards in a list | `plnk card list --list <listId>` |
 | find cards by title | `plnk card find --list <listId> --title <title>` or broader board/project scopes |
-| find cards due in a window | `plnk card find --board <boardId> --due-after <iso8601> --due-before <iso8601>` |
+| find cards due in a window | `plnk card find --board <boardId> --due-after <iso8601> --due-before <iso8601>` (also on `plnk card list`) |
 | read one card with nested state | `plnk card snapshot <cardId> --output json` |
 | create a card | `plnk card create --list <listId> --title <title>` |
 | update a card title/description | `plnk card update <cardId> ...` |
@@ -174,6 +174,8 @@ Alias: `plnk lists --board <boardId>`
 
 ```bash
 plnk card list --list <listId>
+plnk card list --board <boardId> --due-before <iso8601>
+plnk card list --board <boardId> --due-after <iso8601> --due-before <iso8601>
 plnk card get <cardId>
 plnk card snapshot <cardId>                  # JSON only — full wire response
 plnk card find --list <listId> --title <title>
@@ -195,7 +197,7 @@ Alias: `plnk cards --list <listId>`
 - `find --board` fetches the board snapshot and searches all cards across lists.
 - `find --project` fetches all boards in the project, then all cards in each board.
 - `find` needs at least one of `--title`, `--label`, `--due-after`, or `--due-before`.
-- `--due-after` / `--due-before` take ISO 8601 timestamps and are strict (`<`, not `≤`). A bound without an offset is UTC. Cards without a due date are excluded whenever a bound is set.
+- `--due-after` / `--due-before` take ISO 8601 timestamps and are strict (`<`, not `≤`). A bound without an offset is UTC. Cards without a due date are excluded whenever a bound is set. Both `card list` and `card find` accept them; on `card list` they filter without changing the `--list` / `--board` scope requirement.
 - `--description` accepts literal text, `-` for stdin, `@file.md` for file.
 - `--due-date` accepts ISO 8601 and is normalised to UTC; `--clear-due-date` removes the due date (mutually exclusive).
 - `--position top` = position 0.0, `bottom` = max float, or provide a numeric value.

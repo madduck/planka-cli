@@ -356,3 +356,100 @@ async fn card_find_warns_on_unparseable_due_date() {
 
     assert_eq!(ids_from(&output), vec!["card-ok"]);
 }
+
+#[tokio::test]
+async fn card_list_due_before_filters_cards() {
+    let server = MockServer::start().await;
+    mount_board(&server, board_snapshot(due_fixture(), json!([]), json!([]))).await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "card",
+            "list",
+            "--board",
+            "board-1",
+            "--due-before",
+            "2026-04-20",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(ids_from(&output), vec!["card-before"]);
+}
+
+#[tokio::test]
+async fn card_list_due_between_combines_bounds_strictly() {
+    let server = MockServer::start().await;
+    mount_board(&server, board_snapshot(due_fixture(), json!([]), json!([]))).await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "card",
+            "list",
+            "--board",
+            "board-1",
+            "--due-after",
+            "2026-04-10",
+            "--due-before",
+            "2026-05-01",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(ids_from(&output), vec!["card-boundary", "card-inside"]);
+}
+
+#[tokio::test]
+async fn card_list_without_due_flags_keeps_null_due_dates() {
+    let server = MockServer::start().await;
+    mount_board(&server, board_snapshot(due_fixture(), json!([]), json!([]))).await;
+
+    let output = plnk_with_server(&server.uri())
+        .args(["card", "list", "--board", "board-1", "--output", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let ids = ids_from(&output);
+    assert!(ids.contains(&"card-null".to_string()));
+    assert_eq!(ids.len(), 5);
+}
+
+#[tokio::test]
+async fn card_list_invalid_due_timestamp_exits_2() {
+    let server = MockServer::start().await;
+
+    let output = plnk_with_server(&server.uri())
+        .args([
+            "card",
+            "list",
+            "--board",
+            "board-1",
+            "--due-before",
+            "not-a-date",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .failure()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["error"]["type"], "InvalidOptionValue");
+    assert_eq!(json["error"]["field"], "--due-before");
+}

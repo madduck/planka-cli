@@ -151,7 +151,7 @@ and errors like:
 
 - `get` requires an ID. Never use `get` with a name.
 - `find` returns collections, including zero or many matches.
-- `card find` selects cards by any combination of `--title`, `--label`, `--due-after`, and `--due-before`. Due bounds are strict ISO 8601 comparisons (`<`), cards without a due date are excluded when a bound is set, and there is no server-side due-date filter — filtering happens over the fetched snapshot.
+- `card find` selects cards by any combination of `--title`, `--label`, `--due-after`, and `--due-before`. Due bounds are strict ISO 8601 comparisons (`<`), cards without a due date are excluded when a bound is set, and there is no server-side due-date filter — filtering happens over the fetched snapshot. `card list` accepts the same `--due-after` / `--due-before` bounds.
 - Custom fields have three surfaces — do not conflate them:
   - `plnk field-group` — the groups (project-level ones are reusable templates)
   - `plnk field` — the named slots inside a group
@@ -184,6 +184,7 @@ plnk project list --output json
 plnk board list --project <projectId> --output json
 plnk list list --board <boardId> --output json
 plnk card list --list <listId> --output json
+plnk card list --board <boardId> --due-before 2026-04-30 --output json
 ```
 
 Find resources by name/title:
