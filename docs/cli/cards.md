@@ -89,11 +89,30 @@ Due-date bounds accept ISO 8601 timestamps: `YYYY-MM-DD` (midnight UTC) or
 `YYYY-MM-DDThh:mm[:ss[.fff]]` with an optional `Z` or `±hh:mm` offset. A timestamp
 without an offset is treated as UTC.
 
+They also accept relative dates, resolved against the current time in your local
+timezone: `today`, `tomorrow`, `yesterday`, `next week`, `next month`,
+`2 weeks from today`, `in 3 days`, `3 days ago`, `this month`, and bare weekday
+names. See [Timestamps](grammar.md#relative-dates) for the full grammar.
+
+```bash
+plnk card list --board <boardId> --due-before tomorrow
+plnk card list --board <boardId> --due-after today --due-before 'next month'
+plnk card find --board <boardId> --due-after '2 weeks ago' --due-before today
+```
+
 The bounds are strict: `--due-after` keeps cards due **strictly after** its
-timestamp and `--due-before` keeps cards due **strictly before** its timestamp. A
-card due exactly on a bound is excluded. Cards without a due date are excluded
+expression and `--due-before` keeps cards due **strictly before** its expression.
+A card due exactly on a bound is excluded. Cards without a due date are excluded
 whenever a due bound is set. A card whose due date cannot be parsed as ISO 8601
 is excluded and reported on stderr.
+
+Relative dates resolve to the **start of the day** in local time, so
+`--due-before tomorrow` excludes cards due today as well as tomorrow. To select
+cards due *today*, combine the two bounds:
+
+```bash
+plnk card list --board <boardId> --due-after today --due-before tomorrow
+```
 
 Always returns a collection. Multiple results are expected, not an error.
 
@@ -132,6 +151,8 @@ plnk card update <cardId> --description "Updated details"
 plnk card update <cardId> --description @updated-spec.md
 plnk card update <cardId> --due-date 2026-04-30
 plnk card update <cardId> --due-date 2026-04-30T12:00:00Z
+plnk card update <cardId> --due-date 'next week'
+plnk card update <cardId> --due-date 'in 2 weeks'
 plnk card update <cardId> --clear-due-date
 
 # Pipe from clipboard (macOS)
@@ -140,9 +161,10 @@ pbpaste | plnk card update <cardId> --description -
 
 At least one field must be provided.
 
-`--due-date` accepts the same ISO 8601 timestamps as `card find` and is
-normalised to UTC before it is sent. Omitting the flag leaves the stored due date
-alone.
+`--due-date` accepts the same ISO 8601 timestamps and relative dates as
+`card find`, and is normalised to UTC before it is sent. A relative date resolves
+to the start of the day in local time and is stored as that absolute instant.
+Omitting the flag leaves the stored due date alone.
 
 Pass `--clear-due-date` to remove the due date. Planka receives an explicit
 `null`. `--due-date` and `--clear-due-date` are mutually exclusive.
