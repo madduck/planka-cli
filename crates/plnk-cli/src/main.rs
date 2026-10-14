@@ -2,6 +2,7 @@ use clap::Parser;
 
 mod app;
 mod commands;
+mod due;
 mod help;
 mod input;
 mod names;

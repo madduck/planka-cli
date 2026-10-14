@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::app::OutputFormat;
 use crate::commands::project::confirm_delete;
+use crate::due::{DueDateRange, normalize_due_date};
 use crate::input::resolve_text;
 use crate::names::{NameIndex, NameSource};
 use crate::output::{
@@ -256,12 +257,21 @@ pub async fn execute(
             project,
             title,
             label,
+            due_after,
+            due_before,
         } => {
-            if title.is_none() && label.is_empty() {
+            if title.is_none() && label.is_empty() && due_after.is_none() && due_before.is_none() {
                 return Err(PlankaError::MissingRequiredOption {
-                    field: "--title or --label".to_string(),
+                    field: "--title, --label, --due-after, or --due-before".to_string(),
                 });
             }
+
+            let due_range = DueDateRange::parse(
+                due_after.as_deref(),
+                "--due-after",
+                due_before.as_deref(),
+                "--due-before",
+            )?;
 
             let project = names.resolve_optional_project(client, project).await?;
             let board = names
@@ -301,6 +311,7 @@ pub async fn execute(
                     .find_cards(scope, title.as_deref().unwrap_or(""))
                     .await?
             };
+            let cards = due_range.filter(cards);
             render_collection_named(client, &cards, format, full, names).await?;
         }
         crate::app::CardAction::Create {
@@ -332,10 +343,11 @@ pub async fn execute(
             id,
             title,
             description,
+            due_date,
         } => {
-            if title.is_none() && description.is_none() {
+            if title.is_none() && description.is_none() && due_date.is_none() {
                 return Err(PlankaError::InvalidOptionValue {
-                    field: "--title / --description".to_string(),
+                    field: "--title / --description / --due-date".to_string(),
                     message: "At least one field must be provided for update".to_string(),
                 });
             }
@@ -343,10 +355,14 @@ pub async fn execute(
                 Some(raw) => Some(resolve_text(&raw)?),
                 None => None,
             };
+            let due_date = match due_date {
+                Some(raw) => Some(normalize_due_date(&raw, "--due-date")?),
+                None => None,
+            };
             let params = UpdateCard {
                 name: title,
                 description: desc,
-                due_date: None,
+                due_date,
                 is_closed: None,
             };
             let card = client.update_card(&id, params).await?;

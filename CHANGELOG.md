@@ -30,6 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     them.
   - custom fields: JSON gains `customFieldName` and table/markdown show it;
     `--field` continues to accept a name.
+- `plnk card find` accepts `--due-after <iso8601>` and `--due-before <iso8601>` to
+  filter cards by due date. The bounds are strict (`after < due < before`, `<`
+  rather than `≤`) and combine with `--title` and `--label`. A due-only `find`
+  (no title or label) is allowed. Cards without a due date are excluded whenever
+  a bound is set. Timestamps accept `YYYY-MM-DD` (midnight UTC) or RFC 3339
+  date-times; a missing offset means UTC. There is no server-side filter, so the
+  predicate runs over the fetched snapshot. A card whose `dueDate` cannot be
+  parsed is excluded and reported on stderr.
+- Card table and markdown output now show a `Due` column before `Closed`. The
+  trimmed JSON projection gains `dueDate` for the same reason, keeping it a
+  strict subset of the full card representation.
+- `plnk card update --due-date <iso8601>` sets a card's due date. The value is
+  validated client-side and normalised to UTC before the request is sent. There
+  is no flag to clear a due date yet.
 
 ## [0.3.0] - 2026-08-10
 

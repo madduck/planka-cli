@@ -519,6 +519,12 @@ pub enum CardAction {
         /// Board-scoped label ID or name (repeat for AND semantics; use an ID to avoid ambiguity)
         #[arg(long = "label")]
         label: Vec<String>,
+        /// Only include cards due strictly after this ISO 8601 timestamp
+        #[arg(long)]
+        due_after: Option<String>,
+        /// Only include cards due strictly before this ISO 8601 timestamp
+        #[arg(long)]
+        due_before: Option<String>,
     },
     /// Create a new card
     Create {
@@ -545,6 +551,9 @@ pub enum CardAction {
         /// New description (literal, "-" for stdin, "@file" for file)
         #[arg(long)]
         description: Option<String>,
+        /// New due date as ISO 8601 (omit to leave unchanged)
+        #[arg(long)]
+        due_date: Option<String>,
     },
     /// Move a card to a different list (optionally on a different board)
     Move {
