@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parsed is excluded and reported on stderr.
 - `plnk card list` accepts the same `--due-after` / `--due-before` filters,
   sharing their semantics with `card find`.
+- Due queries (`card list` / `card find` with `--due-after` or `--due-before`) now
+  exclude closed cards. A closed card is done, so it does not belong in an answer
+  about what is still due. Pass `--include-closed` to keep closed cards in the
+  window. `--closed` keeps only closed cards, with or without a due window, and
+  conflicts with `--include-closed` (exit `2`). A listing without a due bound is
+  unchanged and still returns closed cards.
 - Due-date flags accept **relative dates** in addition to ISO 8601: `now`,
   `today`, `tomorrow`, `yesterday`, `next week`, `next month`, `2 weeks from
   today`, `in 3 days`, `3 days ago`, `this month`, and bare weekday names. They
