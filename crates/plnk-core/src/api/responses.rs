@@ -56,6 +56,12 @@ pub(crate) struct BoardSnapshotIncluded {
     #[serde(default)]
     pub board_memberships: Vec<crate::models::BoardMembership>,
     #[serde(default)]
+    pub card_memberships: Vec<crate::models::CardMembership>,
+    #[serde(default)]
+    pub task_lists: Vec<crate::models::TaskList>,
+    #[serde(default)]
+    pub tasks: Vec<crate::models::Task>,
+    #[serde(default)]
     pub custom_field_groups: Vec<crate::models::CustomFieldGroup>,
     #[serde(default)]
     #[allow(dead_code)] // board-wide fields are read per-group instead

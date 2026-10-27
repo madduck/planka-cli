@@ -17,8 +17,8 @@ use crate::models::{
     CardBatchGetResult, CardLabel, CardMembership, Comment, CreateBoard, CreateCard,
     CreateCardMembership, CreateComment, CreateList, CreateProject, CreateTaskList, CustomField,
     CustomFieldGroup, CustomFieldValue, FindScope, Label, List, MoveCard, Project, ProjectManager,
-    Task, UpdateBoard, UpdateCard, UpdateComment, UpdateCustomField, UpdateCustomFieldGroup,
-    UpdateLabel, UpdateList, UpdateProject, UpdateTask, User,
+    Task, TaskList, UpdateBoard, UpdateCard, UpdateComment, UpdateCustomField,
+    UpdateCustomFieldGroup, UpdateLabel, UpdateList, UpdateProject, UpdateTask, User,
 };
 
 use super::responses::{
@@ -44,19 +44,51 @@ impl PlankaClientV1 {
     }
 }
 
-fn filter_cards_from_board_snapshot(
-    cards: &[Card],
-    card_labels: &[CardLabel],
-    list_id: Option<&str>,
-    label_ids: &[String],
-) -> Vec<Card> {
-    let allowed_card_ids = if label_ids.is_empty() {
+/// The board snapshot collections a card search is computed from.
+struct BoardSnapshotFacts<'a> {
+    cards: &'a [Card],
+    card_labels: &'a [CardLabel],
+    card_memberships: &'a [CardMembership],
+    task_lists: &'a [TaskList],
+    tasks: &'a [Task],
+}
+
+/// The narrowing a caller asked for. Empty slices mean "do not narrow on this
+/// dimension".
+#[derive(Default)]
+struct CardFilter<'a> {
+    list_id: Option<&'a str>,
+    label_ids: &'a [String],
+    member_ids: &'a [String],
+    assignee_ids: &'a [String],
+    /// Union `member_ids` with `assignee_ids` instead of intersecting them.
+    /// This is what Planka's web UI does under its single "Members" button.
+    either_user_role: bool,
+}
+
+/// Narrow a board snapshot's cards by list, labels, members, and assignees.
+///
+/// Every dimension is AND-combined with the others. Within a dimension:
+///
+/// - `label_ids` is AND: a card must carry every requested label.
+/// - `member_ids` and `assignee_ids` are each OR across the requested users.
+///   By default the two are independent and AND-combined: a card needs a
+///   matching member *and* a matching task assignee when both are given.
+/// - Setting `either_user_role` unions them instead, so a card passes on a
+///   member match *or* an assignee match. This reproduces Planka's web UI,
+///   which has one "Members" button covering both relations.
+///
+/// Splitting the two roles is the default so callers can ask for "assigned to
+/// me" without also matching cards they merely watch.
+fn filter_cards_from_board_snapshot(facts: &BoardSnapshotFacts, filter: &CardFilter) -> Vec<Card> {
+    let allowed_card_ids = if filter.label_ids.is_empty() {
         None
     } else {
         let mut allowed: Option<HashSet<&str>> = None;
 
-        for label_id in label_ids {
-            let matching: HashSet<&str> = card_labels
+        for label_id in filter.label_ids {
+            let matching: HashSet<&str> = facts
+                .card_labels
                 .iter()
                 .filter(|card_label| card_label.label_id == *label_id)
                 .map(|card_label| card_label.card_id.as_str())
@@ -71,23 +103,82 @@ fn filter_cards_from_board_snapshot(
         allowed
     };
 
-    cards
+    let member_card_ids = card_ids_for_members(facts.card_memberships, filter.member_ids);
+
+    // Task assignment is card-scoped transitively: tasks point at a task list,
+    // and the task list points at the card. Cards carry no direct assignee.
+    let assignee_card_ids = {
+        let assigned_task_list_ids: HashSet<&str> = facts
+            .tasks
+            .iter()
+            .filter(|task| {
+                task.assignee_user_id
+                    .as_deref()
+                    .is_some_and(|assignee| filter.assignee_ids.iter().any(|id| id == assignee))
+            })
+            .map(|task| task.task_list_id.as_str())
+            .collect();
+
+        facts
+            .task_lists
+            .iter()
+            .filter(|task_list| assigned_task_list_ids.contains(task_list.id.as_str()))
+            .map(|task_list| task_list.card_id.as_str())
+            .collect::<HashSet<_>>()
+    };
+
+    facts
+        .cards
         .iter()
         .filter(|card| {
-            if let Some(target_list_id) = list_id
+            if let Some(target_list_id) = filter.list_id
                 && card.list_id != target_list_id
             {
                 return false;
             }
 
-            if let Some(allowed) = &allowed_card_ids {
-                allowed.contains(card.id.as_str())
+            if let Some(allowed) = &allowed_card_ids
+                && !allowed.contains(card.id.as_str())
+            {
+                return false;
+            }
+
+            let is_member = member_card_ids
+                .as_ref()
+                .is_none_or(|matched| matched.contains(card.id.as_str()));
+            let is_assignee =
+                filter.assignee_ids.is_empty() || assignee_card_ids.contains(card.id.as_str());
+
+            if filter.either_user_role {
+                // Union. A dimension with no users requested is not a vote.
+                (filter.member_ids.is_empty() && filter.assignee_ids.is_empty())
+                    || (!filter.member_ids.is_empty() && is_member)
+                    || (!filter.assignee_ids.is_empty() && is_assignee)
             } else {
-                true
+                is_member && is_assignee
             }
         })
         .cloned()
         .collect()
+}
+
+/// Card IDs held by any of the requested users, or `None` when no user was
+/// requested (meaning "do not narrow on card membership").
+fn card_ids_for_members<'a>(
+    card_memberships: &'a [CardMembership],
+    member_ids: &[String],
+) -> Option<HashSet<&'a str>> {
+    if member_ids.is_empty() {
+        return None;
+    }
+
+    Some(
+        card_memberships
+            .iter()
+            .filter(|card_membership| member_ids.iter().any(|id| id == &card_membership.user_id))
+            .map(|card_membership| card_membership.card_id.as_str())
+            .collect(),
+    )
 }
 
 // ── UserApi ──────────────────────────────────────────────────────────────
@@ -280,14 +371,26 @@ impl CardApi for PlankaClientV1 {
         board_id: &str,
         list_id: Option<&str>,
         label_ids: &[String],
+        member_ids: &[String],
+        assignee_ids: &[String],
+        either_user_role: bool,
     ) -> Result<Vec<Card>, PlankaError> {
         let resp: BoardSnapshot = self.http.get(&format!("/api/boards/{board_id}")).await?;
-        Ok(filter_cards_from_board_snapshot(
-            &resp.included.cards,
-            &resp.included.card_labels,
+        let facts = BoardSnapshotFacts {
+            cards: &resp.included.cards,
+            card_labels: &resp.included.card_labels,
+            card_memberships: &resp.included.card_memberships,
+            task_lists: &resp.included.task_lists,
+            tasks: &resp.included.tasks,
+        };
+        let filter = CardFilter {
             list_id,
             label_ids,
-        ))
+            member_ids,
+            assignee_ids,
+            either_user_role,
+        };
+        Ok(filter_cards_from_board_snapshot(&facts, &filter))
     }
 
     async fn get_card(&self, id: &str) -> Result<Card, PlankaError> {
@@ -397,14 +500,18 @@ impl CardApi for PlankaClientV1 {
             }
             FindScope::Board(board_id) => {
                 debug!("Finding cards in board {board_id}");
-                self.list_cards_in_board(&board_id, None, &[]).await?
+                self.list_cards_in_board(&board_id, None, &[], &[], &[], false)
+                    .await?
             }
             FindScope::Project(project_id) => {
                 debug!("Finding cards across project {project_id}");
                 let boards = self.list_boards(&project_id).await?;
                 let mut all_cards = Vec::new();
                 for board in &boards {
-                    all_cards.extend(self.list_cards_in_board(&board.id, None, &[]).await?);
+                    all_cards.extend(
+                        self.list_cards_in_board(&board.id, None, &[], &[], &[], false)
+                            .await?,
+                    );
                 }
                 all_cards
             }
@@ -1296,8 +1403,8 @@ impl CardCustomFieldApi for PlankaClientV1 {
 
 #[cfg(test)]
 mod tests {
-    use super::filter_cards_from_board_snapshot;
-    use crate::models::{Card, CardLabel};
+    use super::{BoardSnapshotFacts, CardFilter, filter_cards_from_board_snapshot};
+    use crate::models::{Card, CardLabel, CardMembership, Task, TaskList};
 
     fn card(id: &str, list_id: &str, name: &str) -> Card {
         Card {
@@ -1326,6 +1433,71 @@ mod tests {
         }
     }
 
+    fn card_membership(card_id: &str, user_id: &str) -> CardMembership {
+        CardMembership {
+            id: format!("{card_id}-{user_id}"),
+            card_id: card_id.to_string(),
+            user_id: user_id.to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: None,
+        }
+    }
+
+    fn task_list(id: &str, card_id: &str) -> TaskList {
+        TaskList {
+            id: id.to_string(),
+            card_id: card_id.to_string(),
+            name: "Checklist".to_string(),
+            position: 65_536.0,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: None,
+        }
+    }
+
+    fn task(id: &str, task_list_id: &str, assignee_user_id: Option<&str>) -> Task {
+        Task {
+            id: id.to_string(),
+            task_list_id: task_list_id.to_string(),
+            name: "Do the thing".to_string(),
+            is_completed: false,
+            position: 65_536.0,
+            linked_card_id: None,
+            assignee_user_id: assignee_user_id.map(str::to_string),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: None,
+        }
+    }
+
+    /// Build a filter with no narrowing, for tests that only exercise one
+    /// dimension. Empty slices mean "ignore this dimension".
+    fn filter<'a>(
+        list_id: Option<&'a str>,
+        label_ids: &'a [String],
+        member_ids: &'a [String],
+        assignee_ids: &'a [String],
+    ) -> CardFilter<'a> {
+        CardFilter {
+            list_id,
+            label_ids,
+            member_ids,
+            assignee_ids,
+            either_user_role: false,
+        }
+    }
+
+    /// Like [`filter`], but unioning the member and assignee dimensions the way
+    /// Planka's web UI does.
+    fn filter_either<'a>(member_ids: &'a [String], assignee_ids: &'a [String]) -> CardFilter<'a> {
+        CardFilter {
+            either_user_role: true,
+            ..filter(None, &[], member_ids, assignee_ids)
+        }
+    }
+
+    fn ids(cards: &[Card]) -> Vec<&str> {
+        cards.iter().map(|card| card.id.as_str()).collect()
+    }
+
     #[test]
     fn snapshot_filter_by_single_label() {
         let cards = vec![
@@ -1338,17 +1510,19 @@ mod tests {
             card_label("card-2", "label-blue"),
             card_label("card-3", "label-red"),
         ];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &card_labels,
+            card_memberships: &[],
+            task_lists: &[],
+            tasks: &[],
+        };
 
+        let label_ids = ["label-red".to_string()];
         let filtered =
-            filter_cards_from_board_snapshot(&cards, &card_labels, None, &["label-red".into()]);
+            filter_cards_from_board_snapshot(&facts, &filter(None, &label_ids, &[], &[]));
 
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|card| card.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["card-1", "card-3"]
-        );
+        assert_eq!(ids(&filtered), vec!["card-1", "card-3"]);
     }
 
     #[test]
@@ -1364,21 +1538,19 @@ mod tests {
             card_label("card-2", "label-red"),
             card_label("card-3", "label-blue"),
         ];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &card_labels,
+            card_memberships: &[],
+            task_lists: &[],
+            tasks: &[],
+        };
 
-        let filtered = filter_cards_from_board_snapshot(
-            &cards,
-            &card_labels,
-            None,
-            &["label-red".into(), "label-blue".into()],
-        );
+        let label_ids = ["label-red".to_string(), "label-blue".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter(None, &label_ids, &[], &[]));
 
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|card| card.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["card-1"]
-        );
+        assert_eq!(ids(&filtered), vec!["card-1"]);
     }
 
     #[test]
@@ -1392,20 +1564,279 @@ mod tests {
             card_label("card-1", "label-red"),
             card_label("card-3", "label-red"),
         ];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &card_labels,
+            card_memberships: &[],
+            task_lists: &[],
+            tasks: &[],
+        };
 
+        let label_ids = ["label-red".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter(Some("list-a"), &label_ids, &[], &[]));
+
+        assert_eq!(ids(&filtered), vec!["card-1"]);
+    }
+
+    #[test]
+    fn snapshot_filter_by_member_matches_card_membership_only() {
+        let cards = vec![
+            card("card-1", "list-a", "Member"),
+            card("card-2", "list-a", "Non-member"),
+        ];
+        let card_memberships = vec![card_membership("card-1", "user-1")];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &[],
+            card_memberships: &card_memberships,
+            task_lists: &[],
+            tasks: &[],
+        };
+
+        let member_ids = ["user-1".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter(None, &[], &member_ids, &[]));
+
+        assert_eq!(ids(&filtered), vec!["card-1"]);
+    }
+
+    #[test]
+    fn snapshot_filter_by_assignee_walks_task_lists_to_cards() {
+        let cards = vec![
+            card("card-1", "list-a", "Assigned"),
+            card("card-2", "list-a", "Unassigned"),
+            card("card-3", "list-a", "Other assignee"),
+        ];
+        let task_lists = vec![
+            task_list("tl-1", "card-1"),
+            task_list("tl-2", "card-2"),
+            task_list("tl-3", "card-3"),
+        ];
+        let tasks = vec![
+            task("task-1", "tl-1", Some("user-1")),
+            task("task-2", "tl-2", None),
+            task("task-3", "tl-3", Some("user-2")),
+        ];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &[],
+            card_memberships: &[],
+            task_lists: &task_lists,
+            tasks: &tasks,
+        };
+
+        let assignee_ids = ["user-1".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter(None, &[], &[], &assignee_ids));
+
+        assert_eq!(ids(&filtered), vec!["card-1"]);
+    }
+
+    #[test]
+    fn snapshot_filter_assignee_ignores_unassigned_tasks() {
+        let cards = vec![card("card-1", "list-a", "One")];
+        let task_lists = vec![task_list("tl-1", "card-1")];
+        let tasks = vec![task("task-1", "tl-1", None)];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &[],
+            card_memberships: &[],
+            task_lists: &task_lists,
+            tasks: &tasks,
+        };
+
+        let assignee_ids = ["user-1".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter(None, &[], &[], &assignee_ids));
+
+        assert!(filtered.is_empty(), "unassigned tasks must not match");
+    }
+
+    #[test]
+    fn snapshot_filter_member_and_assignee_are_and_combined() {
+        let cards = vec![
+            card("card-1", "list-a", "Both"),
+            card("card-2", "list-a", "Member only"),
+            card("card-3", "list-a", "Assignee only"),
+        ];
+        let card_memberships = vec![card_membership("card-1", "user-1")];
+        let task_lists = vec![task_list("tl-1", "card-1"), task_list("tl-3", "card-3")];
+        let tasks = vec![
+            task("task-1", "tl-1", Some("user-1")),
+            task("task-3", "tl-3", Some("user-1")),
+        ];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &[],
+            card_memberships: &card_memberships,
+            task_lists: &task_lists,
+            tasks: &tasks,
+        };
+
+        let user_ids = ["user-1".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter(None, &[], &user_ids, &user_ids));
+
+        assert_eq!(ids(&filtered), vec!["card-1"]);
+    }
+
+    #[test]
+    fn snapshot_filter_multiple_members_are_union() {
+        let cards = vec![
+            card("card-1", "list-a", "One"),
+            card("card-2", "list-a", "Two"),
+            card("card-3", "list-a", "Three"),
+        ];
+        let card_memberships = vec![
+            card_membership("card-1", "user-1"),
+            card_membership("card-2", "user-2"),
+            card_membership("card-3", "user-3"),
+        ];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &[],
+            card_memberships: &card_memberships,
+            task_lists: &[],
+            tasks: &[],
+        };
+
+        let member_ids = ["user-1".to_string(), "user-3".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter(None, &[], &member_ids, &[]));
+
+        assert_eq!(ids(&filtered), vec!["card-1", "card-3"]);
+    }
+
+    #[test]
+    fn snapshot_filter_member_combines_with_list_and_label_scope() {
+        let cards = vec![
+            card("card-1", "list-a", "One"),
+            card("card-2", "list-b", "Two"),
+            card("card-3", "list-a", "Three"),
+        ];
+        let card_labels = vec![
+            card_label("card-1", "label-red"),
+            card_label("card-2", "label-red"),
+            card_label("card-3", "label-blue"),
+        ];
+        let card_memberships = vec![
+            card_membership("card-1", "user-1"),
+            card_membership("card-2", "user-1"),
+            card_membership("card-3", "user-1"),
+        ];
+        let facts = BoardSnapshotFacts {
+            cards: &cards,
+            card_labels: &card_labels,
+            card_memberships: &card_memberships,
+            task_lists: &[],
+            tasks: &[],
+        };
+
+        let label_ids = ["label-red".to_string()];
+        let member_ids = ["user-1".to_string()];
         let filtered = filter_cards_from_board_snapshot(
-            &cards,
-            &card_labels,
-            Some("list-a"),
-            &["label-red".into()],
+            &facts,
+            &filter(Some("list-a"), &label_ids, &member_ids, &[]),
         );
 
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|card| card.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["card-1"]
-        );
+        assert_eq!(ids(&filtered), vec!["card-1"]);
+    }
+
+    /// A fixture where the same user plays different roles on different cards:
+    /// both roles on `card-1`, member only on `card-2`, assignee only on
+    /// `card-3`, and no role on `card-4`.
+    struct RoleFixture {
+        cards: Vec<Card>,
+        card_memberships: Vec<CardMembership>,
+        task_lists: Vec<TaskList>,
+        tasks: Vec<Task>,
+    }
+
+    fn role_fixture() -> RoleFixture {
+        RoleFixture {
+            cards: vec![
+                card("card-1", "list-a", "Both"),
+                card("card-2", "list-a", "Member only"),
+                card("card-3", "list-a", "Assignee only"),
+                card("card-4", "list-a", "Neither"),
+            ],
+            card_memberships: vec![
+                card_membership("card-1", "user-1"),
+                card_membership("card-2", "user-1"),
+            ],
+            task_lists: vec![task_list("tl-1", "card-1"), task_list("tl-3", "card-3")],
+            tasks: vec![
+                task("task-1", "tl-1", Some("user-1")),
+                task("task-3", "tl-3", Some("user-1")),
+            ],
+        }
+    }
+
+    fn facts_of(fixture: &RoleFixture) -> BoardSnapshotFacts<'_> {
+        BoardSnapshotFacts {
+            cards: &fixture.cards,
+            card_labels: &[],
+            card_memberships: &fixture.card_memberships,
+            task_lists: &fixture.task_lists,
+            tasks: &fixture.tasks,
+        }
+    }
+
+    #[test]
+    fn either_user_role_unions_member_and_assignee() {
+        let fixture = role_fixture();
+        let facts = facts_of(&fixture);
+
+        let user_ids = ["user-1".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter_either(&user_ids, &user_ids));
+
+        assert_eq!(ids(&filtered), vec!["card-1", "card-2", "card-3"]);
+    }
+
+    #[test]
+    fn either_user_role_with_only_members_behaves_like_member_filter() {
+        let fixture = role_fixture();
+        let facts = facts_of(&fixture);
+
+        let user_ids = ["user-1".to_string()];
+        let filtered = filter_cards_from_board_snapshot(&facts, &filter_either(&user_ids, &[]));
+
+        assert_eq!(ids(&filtered), vec!["card-1", "card-2"]);
+    }
+
+    #[test]
+    fn either_user_role_with_only_assignees_behaves_like_assignee_filter() {
+        let fixture = role_fixture();
+        let facts = facts_of(&fixture);
+
+        let user_ids = ["user-1".to_string()];
+        let filtered = filter_cards_from_board_snapshot(&facts, &filter_either(&[], &user_ids));
+
+        assert_eq!(ids(&filtered), vec!["card-1", "card-3"]);
+    }
+
+    #[test]
+    fn either_user_role_with_different_users_unions_both_sets() {
+        let fixture = role_fixture();
+        let facts = facts_of(&fixture);
+
+        let member_ids = ["user-1".to_string()];
+        let assignee_ids = ["user-2".to_string()];
+        let filtered =
+            filter_cards_from_board_snapshot(&facts, &filter_either(&member_ids, &assignee_ids));
+
+        assert_eq!(ids(&filtered), vec!["card-1", "card-2"]);
+    }
+
+    #[test]
+    fn either_user_role_with_no_users_matches_everything() {
+        let fixture = role_fixture();
+        let facts = facts_of(&fixture);
+
+        let filtered = filter_cards_from_board_snapshot(&facts, &filter_either(&[], &[]));
+
+        assert_eq!(ids(&filtered), vec!["card-1", "card-2", "card-3", "card-4"]);
     }
 }

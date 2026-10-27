@@ -362,6 +362,9 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card find --board 456 --title 'Fix auth'".into(),
             "plnk card find --board 456 --label urgent".into(),
             "plnk card find --board 456 --label 111 --title 'Fix auth'".into(),
+            "plnk card find --board 456 --assignee jane".into(),
+            "plnk card find --board 456 --member jane --assignee jane".into(),
+            "plnk card find --board 456 --assignee-or-member jane".into(),
             "plnk card find --project 123 --title 'Fix auth'".into(),
         ],
         ("card", "create") => vec![

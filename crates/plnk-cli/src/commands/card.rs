@@ -1,6 +1,6 @@
-use plnk_core::api::{CardApi, LabelApi, ListApi, match_by_name};
+use plnk_core::api::{CardApi, LabelApi, ListApi, UserApi, match_by_name};
 use plnk_core::error::PlankaError;
-use plnk_core::models::{CreateCard, ErrorFailure, FindScope, Label, MoveCard, UpdateCard};
+use plnk_core::models::{CreateCard, ErrorFailure, FindScope, Label, MoveCard, UpdateCard, User};
 use serde::Serialize;
 
 use crate::app::OutputFormat;
@@ -71,13 +71,93 @@ fn resolve_label_id(labels: &[Label], query: &str) -> Result<String, PlankaError
     }
 }
 
-async fn resolve_label_scope(
-    client: &(impl LabelApi + ListApi),
+/// Resolve a user query (ID, name, or username) to a single user ID.
+///
+/// Resolution is server-wide rather than board-scoped: a task assignee need not
+/// be a board member, and the board snapshot's `included.users` only carries
+/// board members plus card creators, so it cannot be trusted as the candidate
+/// set.
+fn resolve_user_id(users: &[User], query: &str) -> Result<String, PlankaError> {
+    if users.iter().any(|user| user.id == query) {
+        return Ok(query.to_string());
+    }
+
+    if let Some(user) = users
+        .iter()
+        .find(|user| user.username.as_deref() == Some(query))
+    {
+        return Ok(user.id.clone());
+    }
+
+    let matched = match_by_name(users, query);
+    match matched.len() {
+        0 => Err(PlankaError::NotFoundMessage {
+            message: format!(
+                "No user matching '{query}' was found. \
+                 Use 'plnk user list' to inspect available users or pass a user ID."
+            ),
+        }),
+        1 => Ok(matched[0].id.clone()),
+        _ => {
+            let candidates = matched
+                .iter()
+                .map(|user| {
+                    let handle = user.username.as_deref().map_or_else(
+                        || user.email.clone().unwrap_or_default(),
+                        |username| format!("@{username}"),
+                    );
+                    format!("{handle} ({})", user.id)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(PlankaError::InvalidOptionValue {
+                field: "--member/--assignee".to_string(),
+                message: format!(
+                    "User '{query}' matched multiple users. \
+                     Be more specific or use a user ID. Matches: {candidates}"
+                ),
+            })
+        }
+    }
+}
+
+/// Board context for narrowing a card search from a board snapshot.
+struct BoardScope {
+    board_id: String,
+    list_id: Option<String>,
+    label_ids: Vec<String>,
+    member_ids: Vec<String>,
+    assignee_ids: Vec<String>,
+    either_user_role: bool,
+}
+
+/// Resolve `--list`/`--board` plus the board-scoped `--label`, `--member`,
+/// `--assignee`, and `--assignee-or-member` filters into one scope.
+///
+/// Returns `None` when no board-scoped filter was requested, leaving the caller
+/// free to use a cheaper per-scope path. A `--list` scope is promoted to its
+/// board because all the filters are computed from a board snapshot.
+async fn resolve_board_scope(
+    client: &(impl LabelApi + ListApi + UserApi),
     list: Option<&str>,
     board: Option<&str>,
     labels: &[String],
-) -> Result<Option<(String, Option<String>, Vec<String>)>, PlankaError> {
-    if labels.is_empty() {
+    members: &[String],
+    assignees: &[String],
+    either_users: &[String],
+) -> Result<Option<BoardScope>, PlankaError> {
+    if !either_users.is_empty() && (!members.is_empty() || !assignees.is_empty()) {
+        return Err(PlankaError::InvalidOptionValue {
+            field: "--assignee-or-member".to_string(),
+            message: "--assignee-or-member cannot be combined with --member or --assignee; \
+                      it is shorthand for both at once"
+                .to_string(),
+        });
+    }
+
+    let has_user_filter = !members.is_empty() || !assignees.is_empty() || !either_users.is_empty();
+
+    if labels.is_empty() && !has_user_filter {
         return Ok(None);
     }
 
@@ -87,19 +167,61 @@ async fn resolve_label_scope(
     } else if let Some(board_id) = board {
         (board_id.to_string(), None)
     } else {
+        let field = if labels.is_empty() {
+            "--member/--assignee/--assignee-or-member"
+        } else {
+            "--label"
+        };
         return Err(PlankaError::InvalidOptionValue {
-            field: "--label".to_string(),
-            message: "--label is only supported with --list or --board scopes because labels are board-scoped".to_string(),
+            field: field.to_string(),
+            message: format!(
+                "{field} is only supported with --list or --board scopes because \
+                 labels and members are board-scoped"
+            ),
         });
     };
 
-    let board_labels = client.list_labels(&board_id).await?;
-    let resolved = labels
-        .iter()
-        .map(|query| resolve_label_id(&board_labels, query))
-        .collect::<Result<Vec<_>, _>>()?;
+    let label_ids = if labels.is_empty() {
+        Vec::new()
+    } else {
+        let board_labels = client.list_labels(&board_id).await?;
+        labels
+            .iter()
+            .map(|query| resolve_label_id(&board_labels, query))
+            .collect::<Result<Vec<_>, _>>()?
+    };
 
-    Ok(Some((board_id, list_id, resolved)))
+    // `--assignee-or-member` feeds both dimensions and asks for their union.
+    let (member_queries, assignee_queries) = if either_users.is_empty() {
+        (members, assignees)
+    } else {
+        (either_users, either_users)
+    };
+
+    let (member_ids, assignee_ids) = if has_user_filter {
+        let users = client.list_users().await?;
+        (
+            member_queries
+                .iter()
+                .map(|query| resolve_user_id(&users, query))
+                .collect::<Result<Vec<_>, _>>()?,
+            assignee_queries
+                .iter()
+                .map(|query| resolve_user_id(&users, query))
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
+    Ok(Some(BoardScope {
+        board_id,
+        list_id,
+        label_ids,
+        member_ids,
+        assignee_ids,
+        either_user_role: !either_users.is_empty(),
+    }))
 }
 
 fn build_get_many_meta(
@@ -160,7 +282,7 @@ fn fatal_batch_error(requested_count: usize, failures: Vec<ErrorFailure>) -> Pla
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(
-    client: &(impl CardApi + LabelApi + ListApi),
+    client: &(impl CardApi + LabelApi + ListApi + UserApi),
     action: crate::app::CardAction,
     format: OutputFormat,
     yes: bool,
@@ -168,16 +290,33 @@ pub async fn execute(
 ) -> Result<(), PlankaError> {
     match action {
         crate::app::CardAction::List { list, board, label } => {
-            let cards = if let Some((board_id, list_id, label_ids)) =
-                resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
+            let cards = if let Some(scope) = resolve_board_scope(
+                client,
+                list.as_deref(),
+                board.as_deref(),
+                &label,
+                &[],
+                &[],
+                &[],
+            )
+            .await?
             {
                 client
-                    .list_cards_in_board(&board_id, list_id.as_deref(), &label_ids)
+                    .list_cards_in_board(
+                        &scope.board_id,
+                        scope.list_id.as_deref(),
+                        &scope.label_ids,
+                        &[],
+                        &[],
+                        false,
+                    )
                     .await?
             } else if let Some(list_id) = list {
                 client.list_cards(&list_id).await?
             } else if let Some(board_id) = board {
-                client.list_cards_in_board(&board_id, None, &[]).await?
+                client
+                    .list_cards_in_board(&board_id, None, &[], &[], &[], false)
+                    .await?
             } else {
                 return Err(PlankaError::MissingRequiredOption {
                     field: "--list or --board".to_string(),
@@ -248,18 +387,42 @@ pub async fn execute(
             project,
             title,
             label,
+            member,
+            assignee,
+            assignee_or_member,
         } => {
-            if title.is_none() && label.is_empty() {
+            if title.is_none()
+                && label.is_empty()
+                && member.is_empty()
+                && assignee.is_empty()
+                && assignee_or_member.is_empty()
+            {
                 return Err(PlankaError::MissingRequiredOption {
-                    field: "--title or --label".to_string(),
+                    field: "--title, --label, --member, --assignee, or --assignee-or-member"
+                        .to_string(),
                 });
             }
 
-            let cards = if let Some((board_id, list_id, label_ids)) =
-                resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
+            let cards = if let Some(scope) = resolve_board_scope(
+                client,
+                list.as_deref(),
+                board.as_deref(),
+                &label,
+                &member,
+                &assignee,
+                &assignee_or_member,
+            )
+            .await?
             {
                 let scoped_cards = client
-                    .list_cards_in_board(&board_id, list_id.as_deref(), &label_ids)
+                    .list_cards_in_board(
+                        &scope.board_id,
+                        scope.list_id.as_deref(),
+                        &scope.label_ids,
+                        &scope.member_ids,
+                        &scope.assignee_ids,
+                        scope.either_user_role,
+                    )
                     .await?;
                 if let Some(title) = title.as_deref() {
                     match_by_name(&scoped_cards, title)

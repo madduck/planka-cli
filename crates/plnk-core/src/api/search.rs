@@ -70,6 +70,14 @@ impl Named for crate::models::Label {
     }
 }
 
+/// Users are matched on their display name. Usernames and IDs are handled
+/// ahead of the name tiers by callers that accept them as handles.
+impl Named for crate::models::User {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 impl Named for crate::models::CustomField {
     fn name(&self) -> &str {
         &self.name
