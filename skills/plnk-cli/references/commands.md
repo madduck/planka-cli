@@ -25,6 +25,7 @@ This file is optimized for agent lookup. When using it from Pi:
 | list cards in a list | `plnk card list --list <listId>` |
 | find cards by title | `plnk card find --list <listId> --title <title>` or broader board/project scopes |
 | find cards due in a window | `plnk card find --board <boardId> --due-after <iso8601> --due-before <iso8601>` (also on `plnk card list`) |
+| list cards with their assignees | `plnk card list --board <boardId> --members --output json` (also `--members` on `card find` / `card get`) |
 | read one card with nested state | `plnk card snapshot <cardId> --output json` |
 | create a card | `plnk card create --list <listId> --title <title>` |
 | update a card title/description | `plnk card update <cardId> ...` |
@@ -197,6 +198,7 @@ plnk card delete <cardId> [--yes]
 
 Alias: `plnk cards --list <listId>`
 
+- `--members` (on `list`, `find`, `get`, `get-many`, `create`, `update`, `move`, `archive`, `unarchive`) attaches each card's assignees as an `assignees` array of card-membership rows with `userId`. With `--names` each row also carries `userName`. `list`, `find`, and `get` reuse memberships from the response they already fetch; `get-many` and the mutating commands cost one extra `GET /api/cards/{id}` per card.
 - `find` requires exactly one scope flag (`--list`, `--board`, or `--project`).
 - `find --board` fetches the board snapshot and searches all cards across lists.
 - `find --project` fetches all boards in the project, then all cards in each board.

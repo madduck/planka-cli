@@ -1,6 +1,8 @@
-use plnk_core::api::{CardApi, match_by_name};
+use plnk_core::api::{AssigneeApi, CardApi, match_by_name};
 use plnk_core::error::PlankaError;
-use plnk_core::models::{Card, CreateCard, ErrorFailure, FindScope, Label, MoveCard, UpdateCard};
+use plnk_core::models::{
+    Card, CardWithAssignees, CreateCard, ErrorFailure, FindScope, Label, MoveCard, UpdateCard,
+};
 use serde::Serialize;
 
 use crate::app::OutputFormat;
@@ -36,6 +38,79 @@ fn filter_closed(cards: Vec<Card>, closed: bool) -> Vec<Card> {
     } else {
         cards
     }
+}
+
+/// Attach assignees to each card by fetching its memberships.
+///
+/// This is the fallback enrichment path, used only when no response in hand
+/// already carries the memberships (mutation responses). It costs one
+/// `GET /api/cards/{id}` per card.
+async fn enrich_with_members(
+    client: &impl AssigneeApi,
+    cards: Vec<Card>,
+) -> Result<Vec<CardWithAssignees>, PlankaError> {
+    let mut enriched = Vec::with_capacity(cards.len());
+    for card in cards {
+        let assignees = client.list_assignees(&card.id).await?;
+        enriched.push(CardWithAssignees::new(card, assignees));
+    }
+    Ok(enriched)
+}
+
+/// Keep only closed rows when `closed` is set, otherwise pass through.
+fn filter_closed_rows(rows: Vec<CardWithAssignees>, closed: bool) -> Vec<CardWithAssignees> {
+    if closed {
+        rows.into_iter().filter(|row| row.card.is_closed).collect()
+    } else {
+        rows
+    }
+}
+
+/// Render one card, pairing it with its assignees when `members` is set.
+async fn render_card_item(
+    client: &(impl AssigneeApi + NameSource),
+    card: Card,
+    members: bool,
+    format: OutputFormat,
+    full: bool,
+    names: &mut NameIndex,
+) -> Result<(), PlankaError> {
+    if members {
+        let assignees = client.list_assignees(&card.id).await?;
+        let row = CardWithAssignees::new(card, assignees);
+        render_item_named(client, &row, format, full, names).await
+    } else {
+        render_item_named(client, &card, format, full, names).await
+    }
+}
+
+/// Render card rows that already carry their assignees.
+async fn render_member_rows<C>(
+    client: &C,
+    rows: &[CardWithAssignees],
+    format: OutputFormat,
+    full: bool,
+    names: &mut NameIndex,
+) -> Result<(), PlankaError>
+where
+    C: NameSource + ?Sized,
+{
+    render_collection_named(client, rows, format, full, names).await
+}
+
+/// Narrow member rows to those whose card matches `title`.
+///
+/// The house three-tier match runs over the cards; the matched IDs then filter
+/// the rows so their assignees survive.
+fn match_member_rows_by_name(rows: Vec<CardWithAssignees>, title: &str) -> Vec<CardWithAssignees> {
+    let cards: Vec<Card> = rows.iter().map(|row| row.card.clone()).collect();
+    let matched: std::collections::HashSet<&str> = match_by_name(&cards, title)
+        .into_iter()
+        .map(|card| card.id.as_str())
+        .collect();
+    rows.into_iter()
+        .filter(|row| matched.contains(row.card.id.as_str()))
+        .collect()
 }
 
 /// Parse position flag: "top", "bottom", or numeric value.
@@ -176,7 +251,7 @@ fn fatal_batch_error(requested_count: usize, failures: Vec<ErrorFailure>) -> Pla
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(
-    client: &(impl CardApi + NameSource),
+    client: &(impl CardApi + AssigneeApi + NameSource),
     action: crate::app::CardAction,
     format: OutputFormat,
     yes: bool,
@@ -192,6 +267,7 @@ pub async fn execute(
             due_before,
             include_closed,
             closed,
+            members,
         } => {
             let board = names.resolve_optional_board(client, board, None).await?;
             let list = names
@@ -204,37 +280,71 @@ pub async fn execute(
                 "--due-before",
                 LocalClock::system(),
             )?;
-            let cards = if let Some((board_id, list_id, label_ids)) =
-                resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
-            {
-                client
-                    .list_cards_in_board(&board_id, list_id.as_deref(), &label_ids)
-                    .await?
-            } else if let Some(list_id) = list {
-                client.list_cards(&list_id).await?
-            } else if let Some(board_id) = board {
-                client.list_cards_in_board(&board_id, None, &[]).await?
-            } else {
-                return Err(PlankaError::MissingRequiredOption {
-                    field: "--list or --board".to_string(),
-                });
-            };
+            let board = names.resolve_optional_board(client, board, None).await?;
+            let list = names
+                .resolve_optional_list(client, list, board.as_deref(), None)
+                .await?;
+            let label_scope =
+                resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?;
             // `--closed` is an explicit filter, independent of the due window.
             // Apply it first, then tell the due filter to keep closed cards:
             // the caller asked for them, so the implicit planning exclusion
             // must not drop them again.
-            let cards = filter_closed(cards, closed);
-            let cards = due_range.filter(cards, include_closed || closed);
-            render_collection_named(client, &cards, format, full, names).await?;
+            if members {
+                // Every scope here reads memberships from the same response
+                // that supplies the cards, so `--members` costs nothing extra.
+                let rows = if let Some((board_id, list_id, label_ids)) = &label_scope {
+                    client
+                        .list_cards_in_board_with_assignees(board_id, list_id.as_deref(), label_ids)
+                        .await?
+                } else if let Some(list_id) = &list {
+                    client.list_cards_with_assignees(list_id).await?
+                } else if let Some(board_id) = &board {
+                    client
+                        .list_cards_in_board_with_assignees(board_id, None, &[])
+                        .await?
+                } else {
+                    return Err(PlankaError::MissingRequiredOption {
+                        field: "--list or --board".to_string(),
+                    });
+                };
+                let rows = filter_closed_rows(rows, closed);
+                let rows =
+                    due_range.filter_by_card(rows, |row| &row.card, include_closed || closed);
+                render_member_rows(client, &rows, format, full, names).await?;
+            } else {
+                let cards = if let Some((board_id, list_id, label_ids)) = label_scope {
+                    client
+                        .list_cards_in_board(&board_id, list_id.as_deref(), &label_ids)
+                        .await?
+                } else if let Some(list_id) = list {
+                    client.list_cards(&list_id).await?
+                } else if let Some(board_id) = board {
+                    client.list_cards_in_board(&board_id, None, &[]).await?
+                } else {
+                    return Err(PlankaError::MissingRequiredOption {
+                        field: "--list or --board".to_string(),
+                    });
+                };
+                let cards = filter_closed(cards, closed);
+                let cards = due_range.filter(cards, include_closed || closed);
+                render_collection_named(client, &cards, format, full, names).await?;
+            }
         }
-        crate::app::CardAction::Get { id } => {
-            let card = client.get_card(&id).await?;
-            render_item_named(client, &card, format, full, names).await?;
+        crate::app::CardAction::Get { id, members } => {
+            if members {
+                let row = client.get_card_with_assignees(&id).await?;
+                render_item_named(client, &row, format, full, names).await?;
+            } else {
+                let card = client.get_card(&id).await?;
+                render_item_named(client, &card, format, full, names).await?;
+            }
         }
         crate::app::CardAction::GetMany {
             id,
             concurrency,
             allow_missing,
+            members,
         } => {
             let batch = client.get_many_cards(id, usize::from(concurrency)).await?;
             let found_count = batch.found_count();
@@ -278,8 +388,14 @@ pub async fn execute(
                 batch.concurrency,
                 allow_missing,
             );
-            render_collection_with_meta_named(client, &batch.cards, format, full, &meta, names)
-                .await?;
+            if members {
+                let enriched = enrich_with_members(client, batch.cards).await?;
+                render_collection_with_meta_named(client, &enriched, format, full, &meta, names)
+                    .await?;
+            } else {
+                render_collection_with_meta_named(client, &batch.cards, format, full, &meta, names)
+                    .await?;
+            }
         }
         crate::app::CardAction::Snapshot { id } => {
             let snapshot = client.get_card_snapshot(&id).await?;
@@ -295,6 +411,7 @@ pub async fn execute(
             due_before,
             include_closed,
             closed,
+            members,
         } => {
             if title.is_none()
                 && label.is_empty()
@@ -322,49 +439,100 @@ pub async fn execute(
                 LocalClock::system(),
             )?;
 
-            let cards = if let Some((board_id, list_id, label_ids)) =
-                resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?
-            {
-                let scoped_cards = client
-                    .list_cards_in_board(&board_id, list_id.as_deref(), &label_ids)
-                    .await?;
-                if let Some(title) = title.as_deref() {
-                    match_by_name(&scoped_cards, title)
-                        .into_iter()
-                        .cloned()
-                        .collect()
+            let label_scope =
+                resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?;
+            if members {
+                // Memberships come from the same snapshot that supplies the
+                // cards, so `--members` costs nothing extra here either.
+                let mut rows = if let Some((board_id, list_id, label_ids)) = label_scope {
+                    client
+                        .list_cards_in_board_with_assignees(
+                            &board_id,
+                            list_id.as_deref(),
+                            &label_ids,
+                        )
+                        .await?
                 } else {
-                    scoped_cards
-                }
-            } else {
-                let scope = if let Some(list_id) = list {
-                    FindScope::List(list_id)
-                } else if let Some(board_id) = board {
-                    FindScope::Board(board_id)
-                } else if let Some(project_id) = project {
-                    FindScope::Project(project_id)
-                } else {
-                    return Err(PlankaError::MissingRequiredOption {
-                        field: "--list, --board, or --project".to_string(),
-                    });
+                    match (list.clone(), board.clone(), project.clone()) {
+                        (Some(list_id), _, _) => client.list_cards_with_assignees(&list_id).await?,
+                        (_, Some(board_id), _) => {
+                            client
+                                .list_cards_in_board_with_assignees(&board_id, None, &[])
+                                .await?
+                        }
+                        (_, _, Some(project_id)) => {
+                            let mut all = Vec::new();
+                            for board in client.list_boards(&project_id).await? {
+                                all.extend(
+                                    client
+                                        .list_cards_in_board_with_assignees(&board.id, None, &[])
+                                        .await?,
+                                );
+                            }
+                            all
+                        }
+                        _ => {
+                            return Err(PlankaError::MissingRequiredOption {
+                                field: "--list, --board, or --project".to_string(),
+                            });
+                        }
+                    }
                 };
-                client
-                    .find_cards(scope, title.as_deref().unwrap_or(""))
-                    .await?
-            };
-            // `--closed` is an explicit filter, independent of the due window.
-            // Apply it first, then tell the due filter to keep closed cards:
-            // the caller asked for them, so the implicit planning exclusion
-            // must not drop them again.
-            let cards = filter_closed(cards, closed);
-            let cards = due_range.filter(cards, include_closed || closed);
-            render_collection_named(client, &cards, format, full, names).await?;
+                if let Some(title) = title.as_deref() {
+                    rows = match_member_rows_by_name(rows, title);
+                }
+                // `--closed` is an explicit filter, independent of the due
+                // window. Apply it first, then tell the due filter to keep
+                // closed cards: the caller asked for them, so the implicit
+                // planning exclusion must not drop them again.
+                let rows = filter_closed_rows(rows, closed);
+                let rows =
+                    due_range.filter_by_card(rows, |row| &row.card, include_closed || closed);
+                render_member_rows(client, &rows, format, full, names).await?;
+            } else {
+                let cards = if let Some((board_id, list_id, label_ids)) = label_scope {
+                    let scoped_cards = client
+                        .list_cards_in_board(&board_id, list_id.as_deref(), &label_ids)
+                        .await?;
+                    if let Some(title) = title.as_deref() {
+                        match_by_name(&scoped_cards, title)
+                            .into_iter()
+                            .cloned()
+                            .collect()
+                    } else {
+                        scoped_cards
+                    }
+                } else {
+                    let scope = if let Some(list_id) = list {
+                        FindScope::List(list_id)
+                    } else if let Some(board_id) = board {
+                        FindScope::Board(board_id)
+                    } else if let Some(project_id) = project {
+                        FindScope::Project(project_id)
+                    } else {
+                        return Err(PlankaError::MissingRequiredOption {
+                            field: "--list, --board, or --project".to_string(),
+                        });
+                    };
+                    client
+                        .find_cards(scope, title.as_deref().unwrap_or(""))
+                        .await?
+                };
+                // `--closed` is an explicit filter, independent of the due
+                // window. Apply it first, then tell the due filter to keep
+                // closed cards: the caller asked for them, so the implicit
+                // planning exclusion must not drop them again.
+                let cards = filter_closed(cards, closed);
+                let cards = due_range.filter(cards, include_closed || closed);
+                render_collection_named(client, &cards, format, full, names).await?;
+            }
         }
         crate::app::CardAction::Create {
             list,
             title,
             description,
             position,
+            members,
         } => {
             let list = names.resolve_list(client, &list, None, None).await?;
             let desc = match description {
@@ -383,7 +551,7 @@ pub async fn execute(
                 position: pos,
             };
             let card = client.create_card(&list, params).await?;
-            render_item_named(client, &card, format, full, names).await?;
+            render_card_item(client, card, members, format, full, names).await?;
         }
         crate::app::CardAction::Update {
             id,
@@ -391,6 +559,7 @@ pub async fn execute(
             description,
             due_date,
             clear_due_date,
+            members,
         } => {
             if title.is_none() && description.is_none() && due_date.is_none() && !clear_due_date {
                 return Err(PlankaError::InvalidOptionValue {
@@ -415,13 +584,14 @@ pub async fn execute(
                 is_closed: None,
             };
             let card = client.update_card(&id, params).await?;
-            render_item_named(client, &card, format, full, names).await?;
+            render_card_item(client, card, members, format, full, names).await?;
         }
         crate::app::CardAction::Move {
             id,
             to_list,
             to_board,
             position,
+            members,
         } => {
             let to_board = names.resolve_optional_board(client, to_board, None).await?;
             let to_list = names
@@ -437,15 +607,15 @@ pub async fn execute(
                 position: pos,
             };
             let card = client.move_card(&id, params).await?;
-            render_item_named(client, &card, format, full, names).await?;
+            render_card_item(client, card, members, format, full, names).await?;
         }
-        crate::app::CardAction::Archive { id } => {
+        crate::app::CardAction::Archive { id, members } => {
             let card = client.archive_card(&id).await?;
-            render_item_named(client, &card, format, full, names).await?;
+            render_card_item(client, card, members, format, full, names).await?;
         }
-        crate::app::CardAction::Unarchive { id } => {
+        crate::app::CardAction::Unarchive { id, members } => {
             let card = client.unarchive_card(&id).await?;
-            render_item_named(client, &card, format, full, names).await?;
+            render_card_item(client, card, members, format, full, names).await?;
         }
         crate::app::CardAction::Delete { id } => {
             if !yes && !confirm_delete("card", &id) {

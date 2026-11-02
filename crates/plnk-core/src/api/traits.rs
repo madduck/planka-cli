@@ -11,11 +11,11 @@ use async_trait::async_trait;
 use crate::error::PlankaError;
 use crate::models::{
     Attachment, BaseCustomFieldGroup, Board, BoardMembership, Card, CardBatchGetResult, CardLabel,
-    CardMembership, Comment, CreateBoard, CreateCard, CreateComment, CreateList, CreateProject,
-    CreateTaskList, CustomField, CustomFieldGroup, CustomFieldValue, FindScope, Label, List,
-    MoveCard, Project, ProjectManager, Task, TaskList, UpdateBoard, UpdateCard, UpdateComment,
-    UpdateCustomField, UpdateCustomFieldGroup, UpdateLabel, UpdateList, UpdateProject, UpdateTask,
-    UpdateTaskList, User,
+    CardMembership, CardWithAssignees, Comment, CreateBoard, CreateCard, CreateComment, CreateList,
+    CreateProject, CreateTaskList, CustomField, CustomFieldGroup, CustomFieldValue, FindScope,
+    Label, List, MoveCard, Project, ProjectManager, Task, TaskList, UpdateBoard, UpdateCard,
+    UpdateComment, UpdateCustomField, UpdateCustomFieldGroup, UpdateLabel, UpdateList,
+    UpdateProject, UpdateTask, UpdateTaskList, User,
 };
 
 #[async_trait]
@@ -72,6 +72,14 @@ pub trait ListApi {
 #[async_trait]
 pub trait CardApi {
     async fn list_cards(&self, list_id: &str) -> Result<Vec<Card>, PlankaError>;
+    /// List a single list's cards together with their assignees.
+    ///
+    /// Memberships come from the same `GET /api/lists/{id}/cards` response,
+    /// so this costs no extra request beyond [`CardApi::list_cards`].
+    async fn list_cards_with_assignees(
+        &self,
+        list_id: &str,
+    ) -> Result<Vec<CardWithAssignees>, PlankaError>;
     /// Enumerate cards from a board snapshot, optionally narrowed to a single
     /// list and/or a set of labels that are AND-combined.
     async fn list_cards_in_board(
@@ -80,7 +88,23 @@ pub trait CardApi {
         list_id: Option<&str>,
         label_ids: &[String],
     ) -> Result<Vec<Card>, PlankaError>;
+    /// Enumerate cards from a board snapshot together with their assignees.
+    ///
+    /// Memberships come from the same `GET /api/boards/{id}` response that
+    /// already supplies the cards, so this costs no extra request beyond
+    /// [`CardApi::list_cards_in_board`].
+    async fn list_cards_in_board_with_assignees(
+        &self,
+        board_id: &str,
+        list_id: Option<&str>,
+        label_ids: &[String],
+    ) -> Result<Vec<CardWithAssignees>, PlankaError>;
     async fn get_card(&self, id: &str) -> Result<Card, PlankaError>;
+    /// Fetch one card together with its assignees.
+    ///
+    /// Memberships come from the same `GET /api/cards/{id}` response, so this
+    /// costs no extra request beyond [`CardApi::get_card`].
+    async fn get_card_with_assignees(&self, id: &str) -> Result<CardWithAssignees, PlankaError>;
     async fn get_many_cards(
         &self,
         ids: Vec<String>,

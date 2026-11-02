@@ -79,6 +79,20 @@ impl Tabular for Card {
     }
 }
 
+impl Tabular for CardWithAssignees {
+    fn trimmed_columns() -> &'static [(&'static str, &'static str)] {
+        &[
+            ("id", "ID"),
+            ("name", "Name"),
+            ("listId", "List"),
+            ("position", "Position"),
+            ("dueDate", "Due"),
+            ("isClosed", "Closed"),
+            ("assignees", "Assignees"),
+        ]
+    }
+}
+
 impl Tabular for Task {
     fn trimmed_columns() -> &'static [(&'static str, &'static str)] {
         // `taskListId` is in the trimmed view because a card can carry several

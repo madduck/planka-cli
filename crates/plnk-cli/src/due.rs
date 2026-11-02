@@ -55,12 +55,27 @@ impl DueDateRange {
     /// a closed card is done. An unbounded range keeps everything and ignores
     /// `include_closed` entirely, so a bare listing is unchanged.
     #[must_use]
-    pub fn filter(&self, mut cards: Vec<Card>, include_closed: bool) -> Vec<Card> {
+    pub fn filter(&self, cards: Vec<Card>, include_closed: bool) -> Vec<Card> {
+        self.filter_by_card(cards, |card| card, include_closed)
+    }
+
+    /// Keep only items whose card falls strictly inside the range.
+    ///
+    /// This is the general form of [`filter`](Self::filter) for collections
+    /// that wrap a card, such as `CardWithAssignees`, so a members-aware
+    /// listing is filtered without dropping the attached assignees.
+    #[must_use]
+    pub fn filter_by_card<T>(
+        &self,
+        mut items: Vec<T>,
+        card: impl Fn(&T) -> &Card,
+        include_closed: bool,
+    ) -> Vec<T> {
         if self.after.is_none() && self.before.is_none() {
-            return cards;
+            return items;
         }
-        cards.retain(|card| self.matches(card, include_closed));
-        cards
+        items.retain(|item| self.matches(card(item), include_closed));
+        items
     }
 
     fn matches(&self, card: &Card, include_closed: bool) -> bool {

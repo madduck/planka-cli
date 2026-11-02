@@ -163,6 +163,9 @@ pub enum Command {
         /// Only include closed cards
         #[arg(long)]
         closed: bool,
+        /// Include the users assigned to each card
+        #[arg(long)]
+        members: bool,
     },
     /// Alias for `task list --card <id>`
     #[command(hide = true)]
@@ -530,11 +533,17 @@ pub enum CardAction {
         /// Only include closed cards
         #[arg(long)]
         closed: bool,
+        /// Include the users assigned to each card
+        #[arg(long)]
+        members: bool,
     },
     /// Get a card by ID
     Get {
         /// Card ID
         id: String,
+        /// Include the users assigned to the card
+        #[arg(long)]
+        members: bool,
     },
     /// Get multiple cards by exact ID
     GetMany {
@@ -547,6 +556,9 @@ pub enum CardAction {
         /// Treat missing card IDs as non-fatal and report them in JSON metadata
         #[arg(long)]
         allow_missing: bool,
+        /// Include the users assigned to each card
+        #[arg(long)]
+        members: bool,
     },
     /// Get the full snapshot (item + included) for a card — JSON only
     Snapshot {
@@ -582,6 +594,9 @@ pub enum CardAction {
         /// Only include closed cards
         #[arg(long)]
         closed: bool,
+        /// Include the users assigned to each card
+        #[arg(long)]
+        members: bool,
     },
     /// Create a new card
     Create {
@@ -597,6 +612,9 @@ pub enum CardAction {
         /// Position: "top", "bottom", or numeric
         #[arg(long)]
         position: Option<String>,
+        /// Include the users assigned to the card
+        #[arg(long)]
+        members: bool,
     },
     /// Update a card
     Update {
@@ -615,6 +633,9 @@ pub enum CardAction {
         /// Remove the card's due date
         #[arg(long, conflicts_with = "due_date")]
         clear_due_date: bool,
+        /// Include the users assigned to the card
+        #[arg(long)]
+        members: bool,
     },
     /// Move a card to a different list (optionally on a different board)
     Move {
@@ -629,16 +650,25 @@ pub enum CardAction {
         /// Position: "top", "bottom", or numeric
         #[arg(long)]
         position: Option<String>,
+        /// Include the users assigned to the card
+        #[arg(long)]
+        members: bool,
     },
     /// Archive a card
     Archive {
         /// Card ID
         id: String,
+        /// Include the users assigned to the card
+        #[arg(long)]
+        members: bool,
     },
     /// Unarchive a card
     Unarchive {
         /// Card ID
         id: String,
+        /// Include the users assigned to the card
+        #[arg(long)]
+        members: bool,
     },
     /// Delete a card
     Delete {

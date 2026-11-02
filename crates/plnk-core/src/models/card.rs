@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::ResourceId;
 use super::common::null_as_default;
+use super::membership::CardMembership;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +32,28 @@ pub struct Card {
     pub created_at: String,
     #[serde(default)]
     pub updated_at: Option<String>,
+}
+
+/// A card paired with the users assigned to it.
+///
+/// `card` is flattened into the parent object, so the serialized JSON shape
+/// is exactly the card's own fields plus a sibling `assignees` array of
+/// [`CardMembership`](super::CardMembership) rows. Each membership carries
+/// `userId`; name decoration adds a sibling `userName` when `--names` is
+/// active, the same way it does for every other foreign key.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CardWithAssignees {
+    #[serde(flatten)]
+    pub card: Card,
+    pub assignees: Vec<CardMembership>,
+}
+
+impl CardWithAssignees {
+    /// Pair a card with its assignee memberships.
+    #[must_use]
+    pub fn new(card: Card, assignees: Vec<CardMembership>) -> Self {
+        Self { card, assignees }
+    }
 }
 
 /// Parameters for creating a card.
