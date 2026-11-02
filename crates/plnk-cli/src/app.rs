@@ -129,14 +129,14 @@ pub enum Command {
     #[command(hide = true)]
     Boards {
         /// Parent project ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_PROJECT")]
         project: String,
     },
     /// Alias for `list list --board <id>`
     #[command(hide = true)]
     Lists {
         /// Parent board ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: String,
     },
     /// Alias for `card list --list <id>` / `card list --board <id>`
@@ -189,7 +189,7 @@ pub enum Command {
     #[command(hide = true)]
     Labels {
         /// Parent board ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: String,
     },
     /// Alias for `field list --group|--base-group <id>`
@@ -368,7 +368,7 @@ pub enum BoardAction {
     /// List boards in a project
     List {
         /// Parent project ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_PROJECT")]
         project: String,
     },
     /// Get a board by ID
@@ -384,7 +384,7 @@ pub enum BoardAction {
     /// Find boards by name within a project
     Find {
         /// Parent project ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_PROJECT")]
         project: String,
         /// Board name to search for
         #[arg(long)]
@@ -393,7 +393,7 @@ pub enum BoardAction {
     /// Create a new board
     Create {
         /// Parent project ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_PROJECT")]
         project: String,
         /// Board name
         #[arg(long)]
@@ -427,7 +427,7 @@ pub enum ListAction {
     /// List lists in a board
     List {
         /// Parent board ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: String,
     },
     /// Get a list by ID
@@ -438,7 +438,7 @@ pub enum ListAction {
     /// Find lists by name within a board
     Find {
         /// Parent board ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: String,
         /// List name to search for
         #[arg(long)]
@@ -447,7 +447,7 @@ pub enum ListAction {
     /// Create a new list
     Create {
         /// Parent board ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: String,
         /// List name
         #[arg(long)]
@@ -586,7 +586,7 @@ pub enum CardAction {
     /// Create a new card
     Create {
         /// Parent list ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_LIST")]
         list: String,
         /// Card title
         #[arg(long)]
@@ -948,13 +948,13 @@ pub enum LabelAction {
     /// List labels on a board
     List {
         /// Parent board ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: String,
     },
     /// Find labels by name within a board
     Find {
         /// Parent board ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: String,
         /// Label name to search for
         #[arg(long)]
@@ -963,7 +963,7 @@ pub enum LabelAction {
     /// Create a new label
     Create {
         /// Parent board ID
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: String,
         /// Label name
         #[arg(long)]
@@ -1196,19 +1196,19 @@ pub enum MembershipAction {
     /// List members of a project or board
     List {
         /// Project ID (mutually exclusive with --board)
-        #[arg(long)]
+        #[arg(long, env = "PLNK_PROJECT")]
         project: Option<String>,
         /// Board ID (mutually exclusive with --project)
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: Option<String>,
     },
     /// Add a member to a project or board
     Add {
         /// Project ID (mutually exclusive with --board)
-        #[arg(long)]
+        #[arg(long, env = "PLNK_PROJECT")]
         project: Option<String>,
         /// Board ID (mutually exclusive with --project)
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: Option<String>,
         /// User ID to add
         #[arg(long)]
@@ -1220,10 +1220,10 @@ pub enum MembershipAction {
     /// Remove a member from a project or board
     Remove {
         /// Project ID (mutually exclusive with --board)
-        #[arg(long)]
+        #[arg(long, env = "PLNK_PROJECT")]
         project: Option<String>,
         /// Board ID (mutually exclusive with --project)
-        #[arg(long)]
+        #[arg(long, env = "PLNK_BOARD")]
         board: Option<String>,
         /// User ID to remove
         #[arg(long)]
