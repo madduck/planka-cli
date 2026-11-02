@@ -37,6 +37,44 @@ List closed cards on their own with `--closed`:
 plnk card list --board <boardId> --closed
 ```
 
+### Include assignees (members)
+
+Cards do not carry their assignees in the default output. Add `--members` — on
+`card list`, `card find`, `card get`, `card get-many`, and every card-mutating
+command — to attach an `assignees` array of `cardMembership` rows to each
+result.
+
+```bash
+plnk card list --board <boardId> --members
+plnk card list --board <boardId> --members --output json
+plnk card find --board <boardId> --title "auth" --members
+plnk card get 1234 --members
+plnk card update 1234 --title "New title" --members
+```
+
+In JSON output the field is an array of memberships, each carrying `userId`:
+
+```json
+{
+  "id": "1234",
+  "name": "Fix auth",
+  "assignees": [
+    { "id": "m1", "cardId": "1234", "userId": "88", "createdAt": "..." }
+  ]
+}
+```
+
+With `--names`, each membership also gains a `userName`. Table and markdown
+output show a single `Assignees` column with the usernames (or IDs) joined by
+commas.
+
+`--members` adds no extra requests for `card list`, `card find`, and
+`card get`: the memberships arrive in the same board snapshot, list-cards
+response, or card snapshot that already supplies the cards. `card get-many`
+and the card-mutating commands (`create`, `update`, `move`, `archive`,
+`unarchive`) fetch memberships with one extra `GET /api/cards/{id}` per card,
+because those responses carry none.
+
 ### Get a card by ID
 
 ```bash

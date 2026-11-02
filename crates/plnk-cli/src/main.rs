@@ -507,6 +507,7 @@ async fn main() {
             due_before,
             include_closed,
             closed,
+            members,
         } => match build_client(
             app.server.as_deref(),
             app.token.as_deref(),
@@ -523,6 +524,7 @@ async fn main() {
                         due_before,
                         include_closed,
                         closed,
+                        members,
                     },
                     app.output,
                     app.yes,

@@ -152,6 +152,8 @@ fn machine_help_card_list_includes_label_option_and_examples() {
             .iter()
             .any(|example| example.as_str().unwrap().contains("--include-closed"))
     );
+    assert_eq!(opts["--members"]["type"], "flag");
+    assert_eq!(opts["--members"]["required"], false);
 }
 
 #[test]

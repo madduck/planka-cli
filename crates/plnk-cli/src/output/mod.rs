@@ -180,7 +180,41 @@ pub(crate) fn field_display(
             return name.to_string();
         }
     }
-    value_to_display(value.get(field))
+    match value.get(field) {
+        Some(serde_json::Value::Array(items)) => display_list(items, names),
+        other => value_to_display(other),
+    }
+}
+
+/// Render a JSON array for a table cell.
+///
+/// Arrays of objects that carry a `userId` (assignee memberships) render as a
+/// comma-separated list of usernames, or user IDs when `--names` is not
+/// active. An empty array renders as an empty cell. Any other array falls
+/// back to compact JSON.
+fn display_list(items: &[serde_json::Value], names: Option<&NameIndex>) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+    if items.iter().all(|item| item.get("userId").is_some()) {
+        return items
+            .iter()
+            .map(|item| {
+                item.get("userId")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|id| names.and_then(|index| index.display("userId", id)))
+                    .or_else(|| {
+                        item.get("userName")
+                            .or_else(|| item.get("userId"))
+                            .and_then(serde_json::Value::as_str)
+                    })
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+    }
+    serde_json::to_string(&serde_json::Value::Array(items.to_vec())).unwrap_or_default()
 }
 
 /// Format a JSON value for display in tables and markdown.

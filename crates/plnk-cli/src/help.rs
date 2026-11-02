@@ -298,7 +298,9 @@ fn infer_type(name: &str) -> String {
         | "retry_base_delay_ms"
         | "retry_max_delay_ms" => "integer".to_string(),
         "allow_missing" | "no_retry" | "quiet" | "yes" | "full" | "no_color" | "verbose"
-        | "clear_due_date" | "include_closed" | "closed" | "clear_color" => "flag".to_string(),
+        | "clear_due_date" | "include_closed" | "closed" | "clear_color" | "members" => {
+            "flag".to_string()
+        }
         _ => "string".to_string(),
     }
 }
@@ -366,8 +368,12 @@ fn get_examples(resource: &str, action: &str) -> Vec<String> {
             "plnk card list --board 456 --due-after now".into(),
             "plnk card list --board 456 --due-before now --include-closed".into(),
             "plnk card list --board 456 --closed".into(),
+            "plnk card list --board 456 --members".into(),
         ],
-        ("card", "get") => vec!["plnk card get 1234".into()],
+        ("card", "get") => vec![
+            "plnk card get 1234".into(),
+            "plnk card get 1234 --members".into(),
+        ],
         ("card", "get-many") => vec![
             "plnk card get-many --id 123 --id 456".into(),
             "plnk card get-many --id 123 --id 456 --output json".into(),
