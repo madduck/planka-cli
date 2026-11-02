@@ -80,13 +80,27 @@ pub trait CardApi {
         &self,
         list_id: &str,
     ) -> Result<Vec<CardWithAssignees>, PlankaError>;
-    /// Enumerate cards from a board snapshot, optionally narrowed to a single
-    /// list and/or a set of labels that are AND-combined.
+    /// Enumerate cards from a board snapshot, optionally narrowed by list,
+    /// labels, card members, and task assignees.
+    ///
+    /// The dimensions are AND-combined with each other. `label_ids` is AND
+    /// within itself; `member_ids` and `assignee_ids` are each OR within
+    /// themselves.
+    ///
+    /// `either_user_role` controls how the two user dimensions combine. When
+    /// `false` they are AND-combined, matching membership and task assignment
+    /// as distinct relations. When `true` they are unioned, which reproduces
+    /// Planka's web UI "Members" filter.
+    ///
+    /// Empty slices mean "do not narrow on this dimension".
     async fn list_cards_in_board(
         &self,
         board_id: &str,
         list_id: Option<&str>,
         label_ids: &[String],
+        member_ids: &[String],
+        assignee_ids: &[String],
+        either_user_role: bool,
     ) -> Result<Vec<Card>, PlankaError>;
     /// Enumerate cards from a board snapshot together with their assignees.
     ///

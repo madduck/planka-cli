@@ -565,7 +565,7 @@ pub enum CardAction {
         /// Card ID
         id: String,
     },
-    /// Find cards by title, label, and/or due date within a scope
+    /// Find cards by title, label, member, assignee, and/or due date within a scope
     Find {
         /// Search within a list
         #[arg(long, group = "scope")]
@@ -582,6 +582,16 @@ pub enum CardAction {
         /// Board-scoped label ID or name (repeat for AND semantics; use an ID to avoid ambiguity)
         #[arg(long = "label")]
         label: Vec<String>,
+        /// Card member user ID, name, or username (repeat for OR semantics)
+        #[arg(long = "member")]
+        member: Vec<String>,
+        /// Task assignee user ID, name, or username (repeat for OR semantics)
+        #[arg(long = "assignee")]
+        assignee: Vec<String>,
+        /// Card member OR task assignee user ID, name, or username (repeat for OR
+        /// semantics). Matches Planka's web UI "Members" filter.
+        #[arg(long = "assignee-or-member")]
+        assignee_or_member: Vec<String>,
         /// Only include cards due strictly after this date (ISO 8601 or relative, e.g. 'now', 'today', 'next week')
         #[arg(long)]
         due_after: Option<String>,

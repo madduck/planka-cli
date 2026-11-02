@@ -193,6 +193,137 @@ async fn resolve_label_scope(
     Ok(Some((board_id, list_id, resolved)))
 }
 
+/// Board context for narrowing a card search from a board snapshot.
+struct BoardScope {
+    board_id: String,
+    list_id: Option<String>,
+    label_ids: Vec<String>,
+    member_ids: Vec<String>,
+    assignee_ids: Vec<String>,
+    either_user_role: bool,
+}
+
+/// The user queries a `card find` invocation asked for, before resolution.
+#[derive(Default)]
+struct UserQueries<'a> {
+    members: &'a [String],
+    assignees: &'a [String],
+    either: &'a [String],
+}
+
+/// Resolve `--list`/`--board` plus the board-scoped `--label`, `--member`,
+/// `--assignee`, and `--assignee-or-member` filters into one scope.
+///
+/// Returns `None` when no board-scoped filter was requested, leaving the caller
+/// free to use a cheaper per-scope path. A `--list` scope is promoted to its
+/// board because all the filters are computed from a board snapshot.
+///
+/// User queries go through the shared [`NameIndex`], so `--member` and
+/// `--assignee` honour `--no-names` and reuse the user enumeration that name
+/// decoration already performs.
+async fn resolve_board_scope(
+    client: &impl NameSource,
+    names: &mut NameIndex,
+    list: Option<&str>,
+    board: Option<&str>,
+    labels: &[String],
+    users: UserQueries<'_>,
+) -> Result<Option<BoardScope>, PlankaError> {
+    let UserQueries {
+        members,
+        assignees,
+        either: either_users,
+    } = users;
+
+    if !either_users.is_empty() && (!members.is_empty() || !assignees.is_empty()) {
+        return Err(PlankaError::InvalidOptionValue {
+            field: "--assignee-or-member".to_string(),
+            message: "--assignee-or-member cannot be combined with --member or --assignee; \
+                      it is shorthand for both at once"
+                .to_string(),
+        });
+    }
+
+    let has_user_filter = !members.is_empty() || !assignees.is_empty() || !either_users.is_empty();
+
+    if labels.is_empty() && !has_user_filter {
+        return Ok(None);
+    }
+
+    let (board_id, list_id) = if let Some(list_id) = list {
+        let list_item = client.get_list(list_id).await?;
+        (list_item.board_id, Some(list_id.to_string()))
+    } else if let Some(board_id) = board {
+        (board_id.to_string(), None)
+    } else {
+        let field = if labels.is_empty() {
+            "--member/--assignee/--assignee-or-member"
+        } else {
+            "--label"
+        };
+        return Err(PlankaError::InvalidOptionValue {
+            field: field.to_string(),
+            message: format!(
+                "{field} is only supported with --list or --board scopes because \
+                 labels and members are board-scoped"
+            ),
+        });
+    };
+
+    let label_ids = if labels.is_empty() {
+        Vec::new()
+    } else {
+        let board_labels = client.list_labels(&board_id).await?;
+        labels
+            .iter()
+            .map(|query| resolve_label_id(&board_labels, query))
+            .collect::<Result<Vec<_>, _>>()?
+    };
+
+    // `--assignee-or-member` feeds both dimensions and asks for their union.
+    let (member_queries, assignee_queries) = if either_users.is_empty() {
+        (members, assignees)
+    } else {
+        (either_users, either_users)
+    };
+
+    let (member_ids, assignee_ids) = if has_user_filter {
+        (
+            resolve_user_queries(client, names, member_queries).await?,
+            resolve_user_queries(client, names, assignee_queries).await?,
+        )
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
+    Ok(Some(BoardScope {
+        board_id,
+        list_id,
+        label_ids,
+        member_ids,
+        assignee_ids,
+        either_user_role: !either_users.is_empty(),
+    }))
+}
+
+/// Resolve every user query to an ID, preserving order.
+///
+/// Resolution is server-wide rather than board-scoped: a task assignee need not
+/// be a board member, and the board snapshot's `included.users` only carries
+/// board members plus card creators, so it cannot be trusted as the candidate
+/// set.
+async fn resolve_user_queries(
+    client: &impl NameSource,
+    names: &mut NameIndex,
+    queries: &[String],
+) -> Result<Vec<String>, PlankaError> {
+    let mut resolved = Vec::with_capacity(queries.len());
+    for query in queries {
+        resolved.push(names.resolve_user(client, query).await?);
+    }
+    Ok(resolved)
+}
+
 fn build_get_many_meta(
     found_count: usize,
     requested_count: usize,
@@ -280,10 +411,6 @@ pub async fn execute(
                 "--due-before",
                 LocalClock::system(),
             )?;
-            let board = names.resolve_optional_board(client, board, None).await?;
-            let list = names
-                .resolve_optional_list(client, list, board.as_deref(), None)
-                .await?;
             let label_scope =
                 resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?;
             // `--closed` is an explicit filter, independent of the due window.
@@ -315,12 +442,21 @@ pub async fn execute(
             } else {
                 let cards = if let Some((board_id, list_id, label_ids)) = label_scope {
                     client
-                        .list_cards_in_board(&board_id, list_id.as_deref(), &label_ids)
+                        .list_cards_in_board(
+                            &board_id,
+                            list_id.as_deref(),
+                            &label_ids,
+                            &[],
+                            &[],
+                            false,
+                        )
                         .await?
                 } else if let Some(list_id) = list {
                     client.list_cards(&list_id).await?
                 } else if let Some(board_id) = board {
-                    client.list_cards_in_board(&board_id, None, &[]).await?
+                    client
+                        .list_cards_in_board(&board_id, None, &[], &[], &[], false)
+                        .await?
                 } else {
                     return Err(PlankaError::MissingRequiredOption {
                         field: "--list or --board".to_string(),
@@ -407,6 +543,9 @@ pub async fn execute(
             project,
             title,
             label,
+            member,
+            assignee,
+            assignee_or_member,
             due_after,
             due_before,
             include_closed,
@@ -415,12 +554,17 @@ pub async fn execute(
         } => {
             if title.is_none()
                 && label.is_empty()
+                && member.is_empty()
+                && assignee.is_empty()
+                && assignee_or_member.is_empty()
                 && due_after.is_none()
                 && due_before.is_none()
                 && !closed
             {
                 return Err(PlankaError::MissingRequiredOption {
-                    field: "--title, --label, --due-after, --due-before, or --closed".to_string(),
+                    field: "--title, --label, --member, --assignee, --assignee-or-member, \
+                            --due-after, --due-before, or --closed"
+                        .to_string(),
                 });
             }
 
@@ -439,12 +583,54 @@ pub async fn execute(
                 LocalClock::system(),
             )?;
 
-            let label_scope =
-                resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?;
+            // A user filter needs the board snapshot, so it takes precedence
+            // over the cheaper scope paths below. Resolving it once here keeps
+            // `--member`/`--assignee` orthogonal to `--members`, which only
+            // controls whether assignee rows are rendered.
+            let user_scope = resolve_board_scope(
+                client,
+                names,
+                list.as_deref(),
+                board.as_deref(),
+                &[],
+                UserQueries {
+                    members: &member,
+                    assignees: &assignee,
+                    either: &assignee_or_member,
+                },
+            )
+            .await?;
+
             if members {
                 // Memberships come from the same snapshot that supplies the
                 // cards, so `--members` costs nothing extra here either.
-                let mut rows = if let Some((board_id, list_id, label_ids)) = label_scope {
+                let label_scope =
+                    resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?;
+                let mut rows = if let Some(scope) = user_scope {
+                    let cards = client
+                        .list_cards_in_board(
+                            &scope.board_id,
+                            scope.list_id.as_deref(),
+                            &scope.label_ids,
+                            &scope.member_ids,
+                            &scope.assignee_ids,
+                            scope.either_user_role,
+                        )
+                        .await?;
+                    let memberships = client
+                        .list_cards_in_board_with_assignees(
+                            &scope.board_id,
+                            scope.list_id.as_deref(),
+                            &scope.label_ids,
+                        )
+                        .await?;
+                    let allowed: std::collections::HashSet<&str> =
+                        cards.iter().map(|card| card.id.as_str()).collect();
+                    memberships
+                        .into_iter()
+                        .filter(|row| allowed.contains(row.card.id.as_str()))
+                        .collect()
+                } else if let Some((board_id, list_id, label_ids)) = label_scope {
                     client
                         .list_cards_in_board_with_assignees(
                             &board_id,
@@ -490,9 +676,37 @@ pub async fn execute(
                     due_range.filter_by_card(rows, |row| &row.card, include_closed || closed);
                 render_member_rows(client, &rows, format, full, names).await?;
             } else {
-                let cards = if let Some((board_id, list_id, label_ids)) = label_scope {
+                let label_scope =
+                    resolve_label_scope(client, list.as_deref(), board.as_deref(), &label).await?;
+                let cards = if let Some(scope) = user_scope {
                     let scoped_cards = client
-                        .list_cards_in_board(&board_id, list_id.as_deref(), &label_ids)
+                        .list_cards_in_board(
+                            &scope.board_id,
+                            scope.list_id.as_deref(),
+                            &scope.label_ids,
+                            &scope.member_ids,
+                            &scope.assignee_ids,
+                            scope.either_user_role,
+                        )
+                        .await?;
+                    if let Some(title) = title.as_deref() {
+                        match_by_name(&scoped_cards, title)
+                            .into_iter()
+                            .cloned()
+                            .collect()
+                    } else {
+                        scoped_cards
+                    }
+                } else if let Some((board_id, list_id, label_ids)) = label_scope {
+                    let scoped_cards = client
+                        .list_cards_in_board(
+                            &board_id,
+                            list_id.as_deref(),
+                            &label_ids,
+                            &[],
+                            &[],
+                            false,
+                        )
                         .await?;
                     if let Some(title) = title.as_deref() {
                         match_by_name(&scoped_cards, title)
