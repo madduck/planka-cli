@@ -50,6 +50,8 @@ pub(crate) struct BoardSnapshotIncluded {
     #[serde(default)]
     pub cards: Vec<crate::models::Card>,
     #[serde(default)]
+    pub card_memberships: Vec<crate::models::CardMembership>,
+    #[serde(default)]
     pub labels: Vec<crate::models::Label>,
     #[serde(default)]
     pub card_labels: Vec<crate::models::CardLabel>,
@@ -92,6 +94,17 @@ pub(crate) struct ProjectSnapshotIncluded {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CardsListResponse {
     pub items: Vec<crate::models::Card>,
+    #[serde(default)]
+    pub included: CardsListIncluded,
+}
+
+/// The `included` object of `GET /api/lists/{id}/cards`. It carries the
+/// memberships for the listed cards, so assignees need no extra request.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CardsListIncluded {
+    #[serde(default)]
+    pub card_memberships: Vec<crate::models::CardMembership>,
 }
 
 /// Card snapshot response — GET /api/cards/{id} returns nested included data.

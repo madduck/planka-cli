@@ -429,6 +429,37 @@ fn card_trimmed_columns_match_wire_format() {
 }
 
 #[test]
+fn card_with_assignees_trimmed_columns_match_wire_format() {
+    let columns = CardWithAssignees::trimmed_columns();
+    let fields: Vec<&str> = columns.iter().map(|(f, _)| *f).collect();
+    assert_eq!(
+        fields,
+        vec![
+            "id",
+            "name",
+            "listId",
+            "position",
+            "dueDate",
+            "isClosed",
+            "assignees"
+        ]
+    );
+    let labels: Vec<&str> = columns.iter().map(|(_, l)| *l).collect();
+    assert_eq!(
+        labels,
+        vec![
+            "ID",
+            "Name",
+            "List",
+            "Position",
+            "Due",
+            "Closed",
+            "Assignees"
+        ]
+    );
+}
+
+#[test]
 fn project_trimmed_columns_match_wire_format() {
     let fields: Vec<&str> = Project::trimmed_columns().iter().map(|(f, _)| *f).collect();
     assert_eq!(fields, vec!["id", "name"]);

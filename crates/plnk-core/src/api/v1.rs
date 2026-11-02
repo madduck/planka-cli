@@ -3,7 +3,7 @@
 //! `PlankaClientV1` wraps `HttpClient` and implements all resource API traits.
 //! This is the only concrete implementation — the CLI depends on traits, not this type.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -14,10 +14,10 @@ use crate::client::HttpClient;
 use crate::error::PlankaError;
 use crate::models::{
     Attachment, BaseCustomFieldGroup, Board, BoardMembership, Card, CardBatchFailure,
-    CardBatchGetResult, CardLabel, CardMembership, Comment, CreateBoard, CreateCard,
-    CreateCardMembership, CreateComment, CreateList, CreateProject, CreateTaskList, CustomField,
-    CustomFieldGroup, CustomFieldValue, FindScope, Label, List, MoveCard, Project, ProjectManager,
-    Task, TaskList, UpdateBoard, UpdateCard, UpdateComment, UpdateCustomField,
+    CardBatchGetResult, CardLabel, CardMembership, CardWithAssignees, Comment, CreateBoard,
+    CreateCard, CreateCardMembership, CreateComment, CreateList, CreateProject, CreateTaskList,
+    CustomField, CustomFieldGroup, CustomFieldValue, FindScope, Label, List, MoveCard, Project,
+    ProjectManager, Task, TaskList, UpdateBoard, UpdateCard, UpdateComment, UpdateCustomField,
     UpdateCustomFieldGroup, UpdateLabel, UpdateList, UpdateProject, UpdateTask, UpdateTaskList,
     User,
 };
@@ -88,6 +88,27 @@ fn filter_cards_from_board_snapshot(
             }
         })
         .cloned()
+        .collect()
+}
+
+/// Pair each card with the memberships that reference it.
+///
+/// Memberships for cards not in `cards` are ignored, so a board-wide snapshot
+/// can be passed here for a narrower, already-filtered card set.
+fn attach_assignees(cards: Vec<Card>, memberships: &[CardMembership]) -> Vec<CardWithAssignees> {
+    let mut by_card: HashMap<&str, Vec<CardMembership>> = HashMap::new();
+    for membership in memberships {
+        by_card
+            .entry(membership.card_id.as_str())
+            .or_default()
+            .push(membership.clone());
+    }
+    cards
+        .into_iter()
+        .map(|card| {
+            let assignees = by_card.remove(card.id.as_str()).unwrap_or_default();
+            CardWithAssignees::new(card, assignees)
+        })
         .collect()
 }
 
@@ -276,6 +297,20 @@ impl CardApi for PlankaClientV1 {
         Ok(resp.items)
     }
 
+    async fn list_cards_with_assignees(
+        &self,
+        list_id: &str,
+    ) -> Result<Vec<CardWithAssignees>, PlankaError> {
+        let resp: CardsListResponse = self
+            .http
+            .get(&format!("/api/lists/{list_id}/cards"))
+            .await?;
+        Ok(attach_assignees(
+            resp.items,
+            &resp.included.card_memberships,
+        ))
+    }
+
     async fn list_cards_in_board(
         &self,
         board_id: &str,
@@ -291,9 +326,33 @@ impl CardApi for PlankaClientV1 {
         ))
     }
 
+    async fn list_cards_in_board_with_assignees(
+        &self,
+        board_id: &str,
+        list_id: Option<&str>,
+        label_ids: &[String],
+    ) -> Result<Vec<CardWithAssignees>, PlankaError> {
+        let resp: BoardSnapshot = self.http.get(&format!("/api/boards/{board_id}")).await?;
+        let cards = filter_cards_from_board_snapshot(
+            &resp.included.cards,
+            &resp.included.card_labels,
+            list_id,
+            label_ids,
+        );
+        Ok(attach_assignees(cards, &resp.included.card_memberships))
+    }
+
     async fn get_card(&self, id: &str) -> Result<Card, PlankaError> {
         let resp: ItemResponse<Card> = self.http.get(&format!("/api/cards/{id}")).await?;
         Ok(resp.item)
+    }
+
+    async fn get_card_with_assignees(&self, id: &str) -> Result<CardWithAssignees, PlankaError> {
+        let resp: CardSnapshot = self.http.get(&format!("/api/cards/{id}")).await?;
+        Ok(CardWithAssignees::new(
+            resp.item,
+            resp.included.card_memberships,
+        ))
     }
 
     async fn get_many_cards(
